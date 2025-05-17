@@ -26,6 +26,7 @@ class User(Base):
     email = Column(String)
     role = Column(String)
     profile_image_url = Column(Text)
+    phone_number = Column(String, nullable=True, unique=True)
 
     last_active_at = Column(BigInteger)
     updated_at = Column(BigInteger)
@@ -50,6 +51,7 @@ class UserModel(BaseModel):
     email: str
     role: str = "pending"
     profile_image_url: str
+    phone_number: Optional[str] = None
 
     last_active_at: int  # timestamp in epoch
     updated_at: int  # timestamp in epoch
@@ -99,6 +101,7 @@ class UserUpdateForm(BaseModel):
     email: str
     profile_image_url: str
     password: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 class UsersTable:
@@ -110,6 +113,7 @@ class UsersTable:
         profile_image_url: str = "/user.png",
         role: str = "pending",
         oauth_sub: Optional[str] = None,
+        phone_number: Optional[str] = None,
     ) -> Optional[UserModel]:
         with get_db() as db:
             user = UserModel(
@@ -123,6 +127,7 @@ class UsersTable:
                     "created_at": int(time.time()),
                     "updated_at": int(time.time()),
                     "oauth_sub": oauth_sub,
+                    "phone_number": phone_number,
                 }
             )
             result = User(**user.model_dump())
@@ -163,6 +168,14 @@ class UsersTable:
             with get_db() as db:
                 user = db.query(User).filter_by(oauth_sub=sub).first()
                 return UserModel.model_validate(user)
+        except Exception:
+            return None
+
+    def get_user_by_phone_number(self, phone_number: str) -> Optional[UserModel]:
+        try:
+            with get_db() as db:
+                user = db.query(User).filter_by(phone_number=phone_number).first()
+                return UserModel.model_validate(user) if user else None
         except Exception:
             return None
 

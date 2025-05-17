@@ -17,6 +17,8 @@ from open_webui.models.auths import (
     UpdatePasswordForm,
     UpdateProfileForm,
     UserResponse,
+    SendSmsCodeForm,
+    PhoneLoginForm,
 )
 from open_webui.models.users import Users
 
@@ -396,7 +398,6 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
         user = Auths.authenticate_user(form_data.email.lower(), form_data.password)
 
     if user:
-
         expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
         expires_at = None
         if expires_delta:
@@ -427,17 +428,38 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             user.id, request.app.state.config.USER_PERMISSIONS
         )
 
-        return {
-            "token": token,
-            "token_type": "Bearer",
-            "expires_at": expires_at,
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "profile_image_url": user.profile_image_url,
-            "permissions": user_permissions,
-        }
+        # 使用Webhook通知
+        if request.app.state.config.WEBHOOK_URL:
+            post_webhook(
+                request.app.state.WEBUI_NAME,
+                request.app.state.config.WEBHOOK_URL,
+                WEBHOOK_MESSAGES.USER_SIGNIN.format(
+                    name=user.name,
+                    email=user.email,
+                ),
+                {
+                    "action": "signin",
+                    "message": WEBHOOK_MESSAGES.USER_SIGNIN.format(
+                        name=user.name,
+                        email=user.email,
+                    ),
+                    "user": user.model_dump_json(exclude_none=True),
+                },
+            )
+        
+        # 更新用户最后活跃时间
+        Users.update_user_last_active_by_id(user.id)
+        
+        # 构建响应体
+        result = SessionUserResponse(
+            **user.model_dump(),
+            token=token,
+            token_type="bearer",
+            expires_at=expires_at,
+            permissions=user_permissions
+        )
+        
+        return result
     else:
         raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
 
@@ -550,6 +572,7 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
                 "name": user.name,
                 "role": user.role,
                 "profile_image_url": user.profile_image_url,
+                "phone_number": user.phone_number,
                 "permissions": user_permissions,
             }
         else:
@@ -622,6 +645,8 @@ async def add_user(form_data: AddUserForm, user=Depends(get_admin_user)):
             form_data.name,
             form_data.profile_image_url,
             form_data.role,
+            None,  # oauth_sub
+            form_data.phone_number,  # 添加手机号码参数
         )
 
         if user:
@@ -634,6 +659,7 @@ async def add_user(form_data: AddUserForm, user=Depends(get_admin_user)):
                 "name": user.name,
                 "role": user.role,
                 "profile_image_url": user.profile_image_url,
+                "phone_number": user.phone_number,
             }
         else:
             raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_USER_ERROR)
@@ -908,3 +934,96 @@ async def get_api_key(user=Depends(get_current_user)):
         }
     else:
         raise HTTPException(404, detail=ERROR_MESSAGES.API_KEY_NOT_FOUND)
+
+
+############################
+# Send SMS Code
+############################
+
+@router.post("/sms/send")
+async def send_sms_code(request: Request, form_data: SendSmsCodeForm):
+    """
+    发送短信验证码
+    """
+    from open_webui.utils.sms_service import send_sms
+    
+    phone_number = form_data.phone_number
+    
+    # 检查手机号格式（简单验证）
+    if not phone_number or not phone_number.isdigit() or len(phone_number) != 11:
+        raise HTTPException(400, detail="Invalid phone number format")
+    
+    # 发送短信验证码
+    result = send_sms(phone_number)
+    
+    if not result.get("success", False):
+        raise HTTPException(500, detail=result.get("message", "Failed to send SMS code"))
+    
+    return {"message": "SMS verification code sent successfully"}
+
+
+############################
+# Phone Login
+############################
+
+@router.post("/phone/signin", response_model=SessionUserResponse)
+async def phone_signin(request: Request, response: Response, form_data: PhoneLoginForm):
+    """
+    使用手机号和验证码登录
+    """
+    user = Auths.authenticate_user_by_phone_code(form_data.phone_number, form_data.verification_code)
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid verification code or phone number")
+    
+    expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+    expires_at = None
+    if expires_delta:
+        expires_at = int(time.time()) + int(expires_delta.total_seconds())
+    
+    token = create_token(
+        data={"id": user.id},
+        expires_delta=expires_delta,
+    )
+    
+    # 将 token 设置到 cookie 中
+    response.set_cookie(
+        key="token",
+        value=token,
+        expires=(
+            datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+            if expires_at
+            else None
+        ),
+        httponly=True,
+        samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+        secure=WEBUI_AUTH_COOKIE_SECURE,
+    )
+    
+    # 使用Webhook通知
+    if request.app.state.config.WEBHOOK_URL:
+        post_webhook(
+            request.app.state.WEBUI_NAME,
+            request.app.state.config.WEBHOOK_URL,
+            WEBHOOK_MESSAGES.USER_SIGNIN(user.name),
+            {
+                "action": "signin",
+                "message": WEBHOOK_MESSAGES.USER_SIGNIN(user.name),
+                "user": user.model_dump_json(exclude_none=True),
+            },
+        )
+    
+    # 更新用户最后活跃时间
+    Users.update_user_last_active_by_id(user.id)
+    
+    # 获取用户权限
+    user_permissions = get_permissions(user.id, request.app.state.config.USER_PERMISSIONS)
+    
+    # 构建响应体
+    return SessionUserResponse(
+        **user.model_dump(),
+        token=token,
+        token_type="bearer",
+        expires_at=expires_at,
+        permissions=user_permissions
+    )

@@ -21,7 +21,8 @@
 		profile_image_url: '',
 		name: '',
 		email: '',
-		password: ''
+		password: '',
+		phone_number: ''
 	};
 
 	const submitHandler = async () => {
@@ -39,6 +40,9 @@
 		if (selectedUser) {
 			_user = selectedUser;
 			_user.password = '';
+			if (!_user.phone_number) {
+				_user.phone_number = '';
+			}
 		}
 	});
 </script>
@@ -126,8 +130,23 @@
 								</div>
 							</div>
 
-							<div class="flex flex-col w-full">
-								<div class=" mb-1 text-xs text-gray-500">{$i18n.t('New Password')}</div>
+							<div class="flex flex-col w-full mt-1.5">
+								<div class=" mb-1 text-xs text-gray-500">{$i18n.t('Phone Number')}</div>
+
+								<div class="flex-1">
+									<input
+										class="w-full rounded-sm text-sm bg-transparent outline-hidden"
+										type="text"
+										bind:value={_user.phone_number}
+										placeholder={$i18n.t('Enter Your Phone Number')}
+										autocomplete="off"
+									/>
+								</div>
+							</div>
+
+							{#if _user.id != sessionUser.id}
+								<div class="flex flex-col w-full mt-1.5">
+									<div class=" mb-1 text-xs text-gray-500">{$i18n.t('Password')}</div>
 
 								<div class="flex-1">
 									<input
@@ -139,6 +158,7 @@
 									/>
 								</div>
 							</div>
+							{/if}
 						</div>
 
 						<div class="flex justify-end pt-3 text-sm font-medium">

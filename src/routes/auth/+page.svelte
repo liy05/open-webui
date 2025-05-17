@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { toast } from 'svelte-sonner';
 
 	import { onMount, getContext, tick } from 'svelte';
@@ -6,7 +6,14 @@
 	import { page } from '$app/stores';
 
 	import { getBackendConfig } from '$lib/apis';
-	import { ldapUserSignIn, getSessionUser, userSignIn, userSignUp } from '$lib/apis/auths';
+	import {
+		ldapUserSignIn,
+		getSessionUser,
+		userSignIn,
+		userSignUp,
+		sendSmsCode,
+		phoneSignIn
+	} from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
@@ -20,11 +27,15 @@
 
 	let loaded = false;
 
-	let mode = $config?.features.enable_ldap ? 'ldap' : 'signin';
+	let mode = $config?.features.enable_ldap ? 'ldap' : 'phone';
 
 	let name = '';
 	let email = '';
 	let password = '';
+	let phoneNumber = '';
+	let verificationCode = '';
+	let countDown = 0;
+	let intervalId: number | null = null;
 
 	let ldapUsername = '';
 
@@ -37,7 +48,7 @@
 	const setSessionUser = async (sessionUser) => {
 		if (sessionUser) {
 			console.log(sessionUser);
-			toast.success($i18n.t(`You're now logged in.`));
+			toast.success($i18n.t(`您已成功登录。`));
 			if (sessionUser.token) {
 				localStorage.token = sessionUser.token;
 			}
@@ -78,8 +89,45 @@
 		await setSessionUser(sessionUser);
 	};
 
+	const phoneSignInHandler = async () => {
+		const sessionUser = await phoneSignIn(phoneNumber, verificationCode).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		await setSessionUser(sessionUser);
+	};
+
+	const sendSmsCodeHandler = async () => {
+		if (countDown > 0) return;
+
+		if (!phoneNumber || phoneNumber.length !== 11 || !/^\d+$/.test(phoneNumber)) {
+			toast.error($i18n.t('请输入有效的手机号码'));
+			return;
+		}
+
+		await sendSmsCode(phoneNumber).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		// 设置计时器，60秒内不允许重复发送
+		countDown = 60;
+		intervalId = setInterval(() => {
+			countDown--;
+			if (countDown <= 0 && intervalId) {
+				clearInterval(intervalId);
+				intervalId = null;
+			}
+		}, 1000);
+
+		toast.success($i18n.t('验证码已发送'));
+	};
+
 	const submitHandler = async () => {
-		if (mode === 'ldap') {
+		if (mode === 'phone') {
+			await phoneSignInHandler();
+		} else if (mode === 'ldap') {
 			await ldapSignInHandler();
 		} else if (mode === 'signin') {
 			await signInHandler();
@@ -199,12 +247,9 @@
 							class="flex items-center justify-center gap-3 text-xl sm:text-2xl text-center font-semibold dark:text-gray-200"
 						>
 							<div>
-								{$i18n.t('Signing in to {{WEBUI_NAME}}', { WEBUI_NAME: $WEBUI_NAME })}
+								{$i18n.t('正在登录到 {{WEBUI_NAME}}', { WEBUI_NAME: $WEBUI_NAME })}
 							</div>
-
-							<div>
-								<Spinner />
-							</div>
+							<div><Spinner /></div>
 						</div>
 					</div>
 				{:else}
@@ -219,22 +264,22 @@
 							<div class="mb-1">
 								<div class=" text-2xl font-medium">
 									{#if $config?.onboarding ?? false}
-										{$i18n.t(`Get started with {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										{$i18n.t(`开始使用 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{:else if mode === 'ldap'}
-										{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, { WEBUI_NAME: $WEBUI_NAME })}
+										{$i18n.t(`使用LDAP登录 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{:else if mode === 'signin'}
-										{$i18n.t(`Sign in to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										{$i18n.t(`登录 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+									{:else if mode === 'phone'}
+										{$i18n.t(`手机验证码登录 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{:else}
-										{$i18n.t(`Sign up to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										{$i18n.t(`注册 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{/if}
 								</div>
 
-								{#if $config?.onboarding ?? false}
+								{#if ($config?.onboarding ?? false) && !($config?.features.auth_trusted_header ?? false) && $config?.features.auth !== false}
 									<div class="mt-1 text-xs font-medium text-gray-600 dark:text-gray-500">
 										ⓘ {$WEBUI_NAME}
-										{$i18n.t(
-											'does not make any external connections, and your data stays securely on your locally hosted server.'
-										)}
+										{$i18n.t('不会建立任何外部连接，您的数据安全地存储在本地托管的服务器上。')}
 									</div>
 								{/if}
 							</div>
@@ -244,7 +289,7 @@
 									{#if mode === 'signup'}
 										<div class="mb-2">
 											<label for="name" class="text-sm font-medium text-left mb-1 block"
-												>{$i18n.t('Name')}</label
+												>{$i18n.t('姓名')}</label
 											>
 											<input
 												bind:value={name}
@@ -252,7 +297,7 @@
 												id="name"
 												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
 												autocomplete="name"
-												placeholder={$i18n.t('Enter Your Full Name')}
+												placeholder={$i18n.t('请输入您的全名')}
 												required
 											/>
 										</div>
@@ -261,7 +306,7 @@
 									{#if mode === 'ldap'}
 										<div class="mb-2">
 											<label for="username" class="text-sm font-medium text-left mb-1 block"
-												>{$i18n.t('Username')}</label
+												>{$i18n.t('用户名')}</label
 											>
 											<input
 												bind:value={ldapUsername}
@@ -270,14 +315,55 @@
 												autocomplete="username"
 												name="username"
 												id="username"
-												placeholder={$i18n.t('Enter Your Username')}
+												placeholder={$i18n.t('请输入您的用户名')}
 												required
 											/>
+										</div>
+									{:else if mode === 'phone'}
+										<div class="mb-2">
+											<label for="phone_number" class="text-sm font-medium text-left mb-1 block"
+												>{$i18n.t('手机号码')}</label
+											>
+											<input
+												bind:value={phoneNumber}
+												type="tel"
+												id="phone_number"
+												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+												autocomplete="tel"
+												name="tel"
+												placeholder={$i18n.t('请输入手机号码')}
+												required
+											/>
+										</div>
+										<div class="mb-2">
+											<label
+												for="verification_code"
+												class="text-sm font-medium text-left mb-1 block">{$i18n.t('验证码')}</label
+											>
+											<div class="flex">
+												<input
+													bind:value={verificationCode}
+													type="text"
+													id="verification_code"
+													class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+													placeholder={$i18n.t('请输入验证码')}
+													autocomplete="one-time-code"
+													required
+												/>
+												<button
+													type="button"
+													class="text-xs px-3 py-1 ml-2 bg-gray-100 dark:bg-gray-800 rounded-md whitespace-nowrap hover:bg-gray-200 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+													on:click={sendSmsCodeHandler}
+													disabled={countDown > 0}
+												>
+													{countDown > 0 ? `${countDown}秒` : $i18n.t('获取验证码')}
+												</button>
+											</div>
 										</div>
 									{:else}
 										<div class="mb-2">
 											<label for="email" class="text-sm font-medium text-left mb-1 block"
-												>{$i18n.t('Email')}</label
+												>{$i18n.t('邮箱')}</label
 											>
 											<input
 												bind:value={email}
@@ -286,27 +372,29 @@
 												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
 												autocomplete="email"
 												name="email"
-												placeholder={$i18n.t('Enter Your Email')}
+												placeholder={$i18n.t('请输入您的邮箱')}
 												required
 											/>
 										</div>
 									{/if}
 
-									<div>
-										<label for="password" class="text-sm font-medium text-left mb-1 block"
-											>{$i18n.t('Password')}</label
-										>
-										<input
-											bind:value={password}
-											type="password"
-											id="password"
-											class="my-0.5 w-full text-sm outline-hidden bg-transparent"
-											placeholder={$i18n.t('Enter Your Password')}
-											autocomplete="current-password"
-											name="current-password"
-											required
-										/>
-									</div>
+									{#if mode !== 'phone'}
+										<div>
+											<label for="password" class="text-sm font-medium text-left mb-1 block"
+												>{$i18n.t('密码')}</label
+											>
+											<input
+												bind:value={password}
+												type="password"
+												id="password"
+												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+												placeholder={$i18n.t('请输入您的密码')}
+												autocomplete="current-password"
+												name="current-password"
+												required
+											/>
+										</div>
+									{/if}
 								</div>
 							{/if}
 							<div class="mt-5">
@@ -316,7 +404,14 @@
 											class="bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
 											type="submit"
 										>
-											{$i18n.t('Authenticate')}
+											{$i18n.t('认证')}
+										</button>
+									{:else if mode === 'phone'}
+										<button
+											class="bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											type="submit"
+										>
+											{$i18n.t('验证并登录')}
 										</button>
 									{:else}
 										<button
@@ -324,17 +419,15 @@
 											type="submit"
 										>
 											{mode === 'signin'
-												? $i18n.t('Sign in')
+												? $i18n.t('登录')
 												: ($config?.onboarding ?? false)
-													? $i18n.t('Create Admin Account')
-													: $i18n.t('Create Account')}
+													? $i18n.t('创建管理员账户')
+													: $i18n.t('创建账户')}
 										</button>
 
 										{#if $config?.features.enable_signup && !($config?.onboarding ?? false)}
-											<div class=" mt-4 text-sm text-center">
-												{mode === 'signin'
-													? $i18n.t("Don't have an account?")
-													: $i18n.t('Already have an account?')}
+											<div class=" mt-4 text-xs text-center">
+												{mode === 'signin' ? $i18n.t('没有账户?') : $i18n.t('已有账户?')}
 
 												<button
 													class=" font-medium underline"
@@ -347,7 +440,7 @@
 														}
 													}}
 												>
-													{mode === 'signin' ? $i18n.t('Sign up') : $i18n.t('Sign in')}
+													{mode === 'signin' ? $i18n.t('注册') : $i18n.t('登录')}
 												</button>
 											</div>
 										{/if}
@@ -362,7 +455,7 @@
 								{#if $config?.features.enable_login_form || $config?.features.enable_ldap}
 									<span
 										class="px-3 text-sm font-medium text-gray-900 dark:text-white bg-transparent"
-										>{$i18n.t('or')}</span
+										>{$i18n.t('或')}</span
 									>
 								{/if}
 
@@ -391,7 +484,7 @@
 												d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
 											/><path fill="none" d="M0 0h48v48H0z" />
 										</svg>
-										<span>{$i18n.t('Continue with {{provider}}', { provider: 'Google' })}</span>
+										<span>{$i18n.t('使用 {{provider}} 继续', { provider: 'Google' })}</span>
 									</button>
 								{/if}
 								{#if $config?.oauth?.providers?.microsoft}
@@ -416,7 +509,7 @@
 												fill="#ffb900"
 											/>
 										</svg>
-										<span>{$i18n.t('Continue with {{provider}}', { provider: 'Microsoft' })}</span>
+										<span>{$i18n.t('使用 {{provider}} 继续', { provider: 'Microsoft' })}</span>
 									</button>
 								{/if}
 								{#if $config?.oauth?.providers?.github}
@@ -432,7 +525,7 @@
 												d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.92 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57C20.565 21.795 24 17.31 24 12c0-6.63-5.37-12-12-12z"
 											/>
 										</svg>
-										<span>{$i18n.t('Continue with {{provider}}', { provider: 'GitHub' })}</span>
+										<span>{$i18n.t('使用 {{provider}} 继续', { provider: 'GitHub' })}</span>
 									</button>
 								{/if}
 								{#if $config?.oauth?.providers?.oidc}
@@ -458,7 +551,7 @@
 										</svg>
 
 										<span
-											>{$i18n.t('Continue with {{provider}}', {
+											>{$i18n.t('使用 {{provider}} 继续', {
 												provider: $config?.oauth?.providers?.oidc ?? 'SSO'
 											})}</span
 										>
@@ -478,14 +571,24 @@
 										else mode = 'ldap';
 									}}
 								>
-									<span
-										>{mode === 'ldap'
-											? $i18n.t('Continue with Email')
-											: $i18n.t('Continue with LDAP')}</span
-									>
+									<span>{mode === 'ldap' ? $i18n.t('使用邮箱继续') : $i18n.t('使用LDAP继续')}</span>
 								</button>
 							</div>
 						{/if}
+
+						<div class="mt-2">
+							<button
+								class="flex justify-center items-center text-xs w-full text-center underline"
+								type="button"
+								on:click={() => {
+									if (mode === 'phone') mode = ($config?.onboarding ?? false) ? 'signup' : 'signin';
+									else mode = 'phone';
+								}}
+							>
+								<span>{mode === 'phone' ? $i18n.t('使用邮箱继续') : $i18n.t('使用手机号继续')}</span
+								>
+							</button>
+						</div>
 					</div>
 				{/if}
 			</div>

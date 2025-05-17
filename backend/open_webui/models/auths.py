@@ -8,6 +8,7 @@ from open_webui.env import SRC_LOG_LEVELS
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, String, Text
 from open_webui.utils.auth import verify_password
+from open_webui.utils.sms_service import verify_code
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["MODELS"])
@@ -26,16 +27,16 @@ class Auth(Base):
     active = Column(Boolean)
 
 
+####################
+# API MODELS
+####################
+
+
 class AuthModel(BaseModel):
     id: str
     email: str
     password: str
-    active: bool = True
-
-
-####################
-# Forms
-####################
+    active: bool
 
 
 class Token(BaseModel):
@@ -44,19 +45,7 @@ class Token(BaseModel):
 
 
 class ApiKey(BaseModel):
-    api_key: Optional[str] = None
-
-
-class UserResponse(BaseModel):
-    id: str
-    email: str
-    name: str
-    role: str
-    profile_image_url: str
-
-
-class SigninResponse(Token, UserResponse):
-    pass
+    api_key: str
 
 
 class SigninForm(BaseModel):
@@ -64,23 +53,13 @@ class SigninForm(BaseModel):
     password: str
 
 
-class LdapForm(BaseModel):
-    user: str
-    password: str
+class PhoneLoginForm(BaseModel):
+    phone_number: str
+    verification_code: str
 
 
-class ProfileImageUrlForm(BaseModel):
-    profile_image_url: str
-
-
-class UpdateProfileForm(BaseModel):
-    profile_image_url: str
-    name: str
-
-
-class UpdatePasswordForm(BaseModel):
-    password: str
-    new_password: str
+class SendSmsCodeForm(BaseModel):
+    phone_number: str
 
 
 class SignupForm(BaseModel):
@@ -90,8 +69,54 @@ class SignupForm(BaseModel):
     profile_image_url: Optional[str] = "/user.png"
 
 
-class AddUserForm(SignupForm):
-    role: Optional[str] = "pending"
+class LdapForm(BaseModel):
+    user: str
+    password: str
+
+
+class SigninResponse(BaseModel):
+    token: str
+    token_type: str
+    id: str
+    email: str
+    name: str
+    role: str
+    profile_image_url: str
+    phone_number: Optional[str] = None
+
+
+class AddUserForm(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str = "pending"
+    profile_image_url: Optional[str] = None
+    phone_number: Optional[str] = None
+
+
+class UpdateProfileForm(BaseModel):
+    name: str
+    profile_image_url: str
+    phone_number: Optional[str] = None
+
+
+class UpdatePasswordForm(BaseModel):
+    password: str
+    new_password: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: str
+    profile_image_url: str
+    phone_number: Optional[str] = None
+
+
+####################
+# AUTH CLASS
+####################
 
 
 class AuthsTable:
@@ -103,6 +128,7 @@ class AuthsTable:
         profile_image_url: str = "/user.png",
         role: str = "pending",
         oauth_sub: Optional[str] = None,
+        phone_number: Optional[str] = None,
     ) -> Optional[UserModel]:
         with get_db() as db:
             log.info("insert_new_auth")
@@ -116,7 +142,7 @@ class AuthsTable:
             db.add(result)
 
             user = Users.insert_new_user(
-                id, name, email, profile_image_url, role, oauth_sub
+                id, name, email, profile_image_url, role, oauth_sub, phone_number
             )
 
             db.commit()
@@ -143,6 +169,20 @@ class AuthsTable:
         except Exception:
             return None
 
+    def authenticate_user_by_phone_code(self, phone_number: str, code: str) -> Optional[UserModel]:
+        log.info(f"authenticate_user_by_phone_code: {phone_number}")
+        try:
+            # 验证短信验证码
+            if verify_code(phone_number, code):
+                # 根据手机号获取用户
+                user = Users.get_user_by_phone_number(phone_number)
+                if user:
+                    return user
+            return None
+        except Exception as e:
+            log.error(f"Phone verification error: {str(e)}")
+            return None
+
     def authenticate_user_by_api_key(self, api_key: str) -> Optional[UserModel]:
         log.info(f"authenticate_user_by_api_key: {api_key}")
         # if no api_key, return None
@@ -156,13 +196,12 @@ class AuthsTable:
             return False
 
     def authenticate_user_by_trusted_header(self, email: str) -> Optional[UserModel]:
-        log.info(f"authenticate_user_by_trusted_header: {email}")
         try:
-            with get_db() as db:
-                auth = db.query(Auth).filter_by(email=email, active=True).first()
-                if auth:
-                    user = Users.get_user_by_id(auth.id)
-                    return user
+            user = Users.get_user_by_email(email)
+            if user:
+                return user
+            else:
+                return None
         except Exception:
             return None
 

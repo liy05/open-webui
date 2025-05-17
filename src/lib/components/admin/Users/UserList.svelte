@@ -330,13 +330,35 @@
 							{/if}
 						</div>
 					</th>
+					<th
+						scope="col"
+						class="px-3 py-1.5 cursor-pointer select-none"
+						on:click={() => setSortKey('phone_number')}
+					>
+						<div class="flex gap-1.5 items-center">
+							{$i18n.t('Phone')}
 
+							{#if orderBy === 'phone_number'}
+								<span class="font-normal"
+									>{#if direction === 'asc'}
+										<ChevronUp className="size-2" />
+									{:else}
+										<ChevronDown className="size-2" />
+									{/if}
+								</span>
+							{:else}
+								<span class="invisible">
+									<ChevronUp className="size-2" />
+								</span>
+							{/if}
+						</div>
+					</th>
 					<th
 						scope="col"
 						class="px-3 py-1.5 cursor-pointer select-none"
 						on:click={() => setSortKey('last_active_at')}
 					>
-						<div class="flex gap-1.5 items-center">
+						<div class="flex gap-1.5 items-center whitespace-nowrap">
 							{$i18n.t('Last Active')}
 
 							{#if orderBy === 'last_active_at'}
@@ -437,15 +459,13 @@
 							</div>
 						</td>
 						<td class=" px-3 py-1"> {user.email} </td>
-
+						<td class=" px-3 py-1"> {user.phone_number ?? ''} </td>
 						<td class=" px-3 py-1">
 							{dayjs(user.last_active_at * 1000).fromNow()}
 						</td>
-
 						<td class=" px-3 py-1">
 							{dayjs(user.created_at * 1000).format('LL')}
 						</td>
-
 						<td class=" px-3 py-1"> {user.oauth_sub ?? ''} </td>
 
 						<td class="px-3 py-1 text-right">
@@ -542,7 +562,7 @@
 > 
 > Open WebUI is proudly open source and completely free, with no hidden limits — and we'd love to keep it that way. 🌱  
 >
-> By supporting the project through sponsorship or an enterprise license, you’re not only helping us stay independent, you’re also helping us ship new features faster, improve stability, and grow the project for the long haul. With an *enterprise license*, you also get additional perks like dedicated support, customization options, and more — all at a fraction of what it would cost to build and maintain internally.  
+> By supporting the project through sponsorship or an enterprise license, you're not only helping us stay independent, you're also helping us ship new features faster, improve stability, and grow the project for the long haul. With an *enterprise license*, you also get additional perks like dedicated support, customization options, and more — all at a fraction of what it would cost to build and maintain internally.  
 > 
 > Your support helps us stay independent and continue building great tools for everyone. 💛
 > 

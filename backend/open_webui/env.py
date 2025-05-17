@@ -92,6 +92,7 @@ log_sources = [
     "WEBHOOK",
     "SOCKET",
     "OAUTH",
+    "SMS",
 ]
 
 SRC_LOG_LEVELS = {}
@@ -105,9 +106,9 @@ for source in log_sources:
 
 log.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
-WEBUI_NAME = os.environ.get("WEBUI_NAME", "Open WebUI")
-if WEBUI_NAME != "Open WebUI":
-    WEBUI_NAME += " (Open WebUI)"
+WEBUI_NAME = os.environ.get("WEBUI_NAME", "葛建工AI助手")
+if WEBUI_NAME != "葛建工AI助手":
+    WEBUI_NAME += " (葛建工AI助手)"
 
 WEBUI_FAVICON_URL = "https://openwebui.com/favicon.png"
 
@@ -357,6 +358,17 @@ BYPASS_MODEL_ACCESS_CONTROL = (
 WEBUI_AUTH_SIGNOUT_REDIRECT_URL = os.environ.get(
     "WEBUI_AUTH_SIGNOUT_REDIRECT_URL", None
 )
+
+####################################
+# SMS SERVICE
+####################################
+
+# Aliyun SMS service configuration
+ALIYUN_ACCESS_KEY_ID = os.environ.get("ALIYUN_ACCESS_KEY_ID", "")
+ALIYUN_ACCESS_KEY_SECRET = os.environ.get("ALIYUN_ACCESS_KEY_SECRET", "")
+ALIYUN_SMS_SIGN_NAME = os.environ.get("ALIYUN_SMS_SIGN_NAME", "")
+ALIYUN_SMS_TEMPLATE_CODE = os.environ.get("ALIYUN_SMS_TEMPLATE_CODE", "")
+SMS_CODE_EXPIRE_SECONDS = int(os.environ.get("SMS_CODE_EXPIRE_SECONDS", "300"))
 
 ####################################
 # WEBUI_SECRET_KEY

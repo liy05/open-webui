@@ -2842,3 +2842,16 @@ LDAP_CA_CERT_FILE = PersistentConfig(
 LDAP_CIPHERS = PersistentConfig(
     "LDAP_CIPHERS", "ldap.server.ciphers", os.environ.get("LDAP_CIPHERS", "ALL")
 )
+
+# 在其他配置项后面添加这个
+WEBHOOK_URL = PersistentConfig(
+    "WEBHOOK_URL",
+    "webhook.url",
+    os.environ.get("WEBHOOK_URL", ""),
+)
+
+WEBHOOK_SECRET = PersistentConfig(
+    "WEBHOOK_SECRET",
+    "webhook.secret",
+    os.environ.get("WEBHOOK_SECRET", ""),
+)

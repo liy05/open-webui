@@ -275,6 +275,7 @@ from open_webui.config import (
     WEBUI_NAME,
     WEBUI_BANNERS,
     WEBHOOK_URL,
+    WEBHOOK_SECRET,
     ADMIN_EMAIL,
     SHOW_ADMIN_DETAILS,
     JWT_EXPIRES_IN,
@@ -1502,7 +1503,7 @@ async def get_manifest_json():
         return {
             "name": app.state.WEBUI_NAME,
             "short_name": app.state.WEBUI_NAME,
-            "description": "Open WebUI is an open, extensible, user-friendly interface for AI that adapts to your workflow.",
+            "description": "葛建工AI助手是一个开放、可扩展、用户友好的人工智能界面，能够适应您的工作流程。",
             "start_url": "/",
             "display": "standalone",
             "background_color": "#343541",

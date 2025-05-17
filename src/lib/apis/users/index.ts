@@ -379,6 +379,7 @@ type UserUpdateForm = {
 	profile_image_url: string;
 	email: string;
 	name: string;
+	phone_number: string;
 	password: string;
 };
 
@@ -395,6 +396,7 @@ export const updateUserById = async (token: string, userId: string, user: UserUp
 			profile_image_url: user.profile_image_url,
 			email: user.email,
 			name: user.name,
+			phone_number: user.phone_number,
 			password: user.password !== '' ? user.password : undefined
 		})
 	})
