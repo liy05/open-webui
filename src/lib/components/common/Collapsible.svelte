@@ -36,7 +36,7 @@
 	import Markdown from '../chat/Messages/Markdown.svelte';
 	import Image from './Image.svelte';
 
-	export let open = false;
+	export let open = true;
 
 	export let className = '';
 	export let buttonClassName =
