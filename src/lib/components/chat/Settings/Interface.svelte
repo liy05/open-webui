@@ -46,7 +46,7 @@
 	let copyFormatted = false;
 
 	let collapseCodeBlocks = false;
-	let expandDetails = false;
+	let expandDetails = true;
 
 	let imageCompression = false;
 	let imageCompressionSize = {
@@ -297,7 +297,7 @@
 		copyFormatted = $settings.copyFormatted ?? false;
 
 		collapseCodeBlocks = $settings.collapseCodeBlocks ?? false;
-		expandDetails = $settings.expandDetails ?? false;
+		expandDetails = $settings.expandDetails ?? true;
 
 		landingPageMode = $settings.landingPageMode ?? '';
 		chatBubble = $settings.chatBubble ?? true;
