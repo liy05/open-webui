@@ -1503,7 +1503,7 @@ async def get_manifest_json():
         return {
             "name": app.state.WEBUI_NAME,
             "short_name": app.state.WEBUI_NAME,
-            "description": "葛建工AI助手是一个开放、可扩展、用户友好的人工智能界面，能够适应您的工作流程。",
+            "description": "葛洲坝三峡建设公司AI助手是一个开放、可扩展、用户友好的人工智能界面，能够适应您的工作流程。",
             "start_url": "/",
             "display": "standalone",
             "background_color": "#343541",
