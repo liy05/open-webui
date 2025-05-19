@@ -170,17 +170,9 @@
 			const isDarkMode = document.documentElement.classList.contains('dark');
 
 			if (isDarkMode) {
-				const darkImage = new Image();
-				darkImage.src = '/static/favicon-dark.png';
-
-				darkImage.onload = () => {
-					logo.src = '/static/favicon-dark.png';
-					logo.style.filter = ''; // Ensure no inversion is applied if favicon-dark.png exists
-				};
-
-				darkImage.onerror = () => {
-					logo.style.filter = 'invert(1)'; // Invert image if favicon-dark.png is missing
-				};
+				logo.src = '/static/logo-dark.svg';
+			} else {
+				logo.src = '/static/logo.svg';
 			}
 		}
 	}
@@ -217,35 +209,36 @@
 	}}
 />
 
-<div class="w-full h-screen max-h-[100dvh] text-white relative">
-	<div class="w-full h-full absolute top-0 left-0 bg-white dark:bg-black"></div>
+<div class="w-full h-screen max-h-[100dvh] relative overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
+	<div class="absolute inset-0 bg-pattern opacity-10 dark:opacity-5"></div>
+	
+	<!-- Decorative elements -->
+	<div class="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-purple-200 dark:bg-purple-900/20 blur-3xl"></div>
+	<div class="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-200 dark:bg-blue-900/20 blur-3xl"></div>
 
-	<div class="w-full absolute top-0 left-0 right-0 h-8 drag-region" />
+	<div class="w-full absolute top-0 left-0 right-0 h-8 drag-region z-50" />
 
 	{#if loaded}
 		<div class="fixed m-10 z-50">
 			<div class="flex space-x-2">
-				<div class=" self-center">
+				<div class="self-center flex items-center">
 					<img
 						id="logo"
 						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/splash.png"
-						class=" w-6 rounded-full"
-						alt=""
+						src="/static/logo.svg"
+						class="w-12 h-12 drop-shadow-lg"
+						alt="Open WebUI Logo"
 					/>
+					<span class="ml-3 text-xl font-bold text-gray-800 dark:text-white">{$WEBUI_NAME}</span>
 				</div>
 			</div>
 		</div>
 
-		<div
-			class="fixed bg-transparent min-h-screen w-full flex justify-center font-primary z-50 text-black dark:text-white"
-		>
+		<div class="fixed bg-transparent min-h-screen w-full flex justify-center font-primary z-50 text-black dark:text-white">
 			<div class="w-full sm:max-w-md px-10 min-h-screen flex flex-col text-center">
 				{#if ($config?.features.auth_trusted_header ?? false) || $config?.features.auth === false}
-					<div class=" my-auto pb-10 w-full">
-						<div
-							class="flex items-center justify-center gap-3 text-xl sm:text-2xl text-center font-semibold dark:text-gray-200"
-						>
+					<div class="my-auto pb-10 w-full">
+						<div class="flex items-center justify-center gap-3 text-xl sm:text-2xl text-center font-semibold dark:text-gray-200">
 							<div>
 								{$i18n.t('正在登录到 {{WEBUI_NAME}}', { WEBUI_NAME: $WEBUI_NAME })}
 							</div>
@@ -253,31 +246,31 @@
 						</div>
 					</div>
 				{:else}
-					<div class="  my-auto pb-10 w-full dark:text-gray-100">
+					<div class="my-auto pb-10 w-full dark:text-gray-100">
 						<form
-							class=" flex flex-col justify-center"
+							class="flex flex-col justify-center bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg p-8 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-800"
 							on:submit={(e) => {
 								e.preventDefault();
 								submitHandler();
 							}}
 						>
-							<div class="mb-1">
-								<div class=" text-2xl font-medium">
+							<div class="mb-6">
+								<div class="text-2xl font-bold">
 									{#if $config?.onboarding ?? false}
 										{$i18n.t(`开始使用 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{:else if mode === 'ldap'}
 										{$i18n.t(`使用LDAP登录 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{:else if mode === 'signin'}
-										{$i18n.t(`登录 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										{$i18n.t(`{{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{:else if mode === 'phone'}
-										{$i18n.t(`手机验证码登录 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										{$i18n.t(`{{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{:else}
 										{$i18n.t(`注册 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 									{/if}
 								</div>
 
 								{#if ($config?.onboarding ?? false) && !($config?.features.auth_trusted_header ?? false) && $config?.features.auth !== false}
-									<div class="mt-1 text-xs font-medium text-gray-600 dark:text-gray-500">
+									<div class="mt-2 text-sm font-medium text-gray-600 dark:text-gray-400">
 										ⓘ {$WEBUI_NAME}
 										{$i18n.t('不会建立任何外部连接，您的数据安全地存储在本地托管的服务器上。')}
 									</div>
@@ -285,17 +278,17 @@
 							</div>
 
 							{#if $config?.features.enable_login_form || $config?.features.enable_ldap}
-								<div class="flex flex-col mt-4">
+								<div class="flex flex-col mt-2 space-y-4">
 									{#if mode === 'signup'}
-										<div class="mb-2">
-											<label for="name" class="text-sm font-medium text-left mb-1 block"
+										<div>
+											<label for="name" class="text-sm font-medium text-left mb-1.5 block"
 												>{$i18n.t('姓名')}</label
 											>
 											<input
 												bind:value={name}
 												type="text"
 												id="name"
-												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
 												autocomplete="name"
 												placeholder={$i18n.t('请输入您的全名')}
 												required
@@ -304,14 +297,14 @@
 									{/if}
 
 									{#if mode === 'ldap'}
-										<div class="mb-2">
-											<label for="username" class="text-sm font-medium text-left mb-1 block"
+										<div>
+											<label for="username" class="text-sm font-medium text-left mb-1.5 block"
 												>{$i18n.t('用户名')}</label
 											>
 											<input
 												bind:value={ldapUsername}
 												type="text"
-												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
 												autocomplete="username"
 												name="username"
 												id="username"
@@ -320,39 +313,39 @@
 											/>
 										</div>
 									{:else if mode === 'phone'}
-										<div class="mb-2">
-											<label for="phone_number" class="text-sm font-medium text-left mb-1 block"
+										<div>
+											<label for="phone_number" class="text-sm font-medium text-left mb-1.5 block"
 												>{$i18n.t('手机号码')}</label
 											>
 											<input
 												bind:value={phoneNumber}
 												type="tel"
 												id="phone_number"
-												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
 												autocomplete="tel"
 												name="tel"
 												placeholder={$i18n.t('请输入手机号码')}
 												required
 											/>
 										</div>
-										<div class="mb-2">
+										<div>
 											<label
 												for="verification_code"
-												class="text-sm font-medium text-left mb-1 block">{$i18n.t('验证码')}</label
+												class="text-sm font-medium text-left mb-1.5 block">{$i18n.t('验证码')}</label
 											>
 											<div class="flex">
 												<input
 													bind:value={verificationCode}
 													type="text"
 													id="verification_code"
-													class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+													class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
 													placeholder={$i18n.t('请输入验证码')}
 													autocomplete="one-time-code"
 													required
 												/>
 												<button
 													type="button"
-													class="text-xs px-3 py-1 ml-2 bg-gray-100 dark:bg-gray-800 rounded-md whitespace-nowrap hover:bg-gray-200 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+													class="text-sm px-4 py-2.5 ml-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl whitespace-nowrap hover:bg-gray-200 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
 													on:click={sendSmsCodeHandler}
 													disabled={countDown > 0}
 												>
@@ -361,15 +354,15 @@
 											</div>
 										</div>
 									{:else}
-										<div class="mb-2">
-											<label for="email" class="text-sm font-medium text-left mb-1 block"
+										<div>
+											<label for="email" class="text-sm font-medium text-left mb-1.5 block"
 												>{$i18n.t('邮箱')}</label
 											>
 											<input
 												bind:value={email}
 												type="email"
 												id="email"
-												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
 												autocomplete="email"
 												name="email"
 												placeholder={$i18n.t('请输入您的邮箱')}
@@ -380,14 +373,14 @@
 
 									{#if mode !== 'phone'}
 										<div>
-											<label for="password" class="text-sm font-medium text-left mb-1 block"
+											<label for="password" class="text-sm font-medium text-left mb-1.5 block"
 												>{$i18n.t('密码')}</label
 											>
 											<input
 												bind:value={password}
 												type="password"
 												id="password"
-												class="my-0.5 w-full text-sm outline-hidden bg-transparent"
+												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
 												placeholder={$i18n.t('请输入您的密码')}
 												autocomplete="current-password"
 												name="current-password"
@@ -397,25 +390,26 @@
 									{/if}
 								</div>
 							{/if}
-							<div class="mt-5">
+
+							<div class="mt-6">
 								{#if $config?.features.enable_login_form || $config?.features.enable_ldap}
 									{#if mode === 'ldap'}
 										<button
-											class="bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="bg-blue-600 hover:bg-blue-700 text-white transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm shadow-blue-500/20 hover:shadow-md"
 											type="submit"
 										>
 											{$i18n.t('认证')}
 										</button>
 									{:else if mode === 'phone'}
 										<button
-											class="bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="bg-blue-600 hover:bg-blue-700 text-white transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm shadow-blue-500/20 hover:shadow-md"
 											type="submit"
 										>
 											{$i18n.t('验证并登录')}
 										</button>
 									{:else}
 										<button
-											class="bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="bg-blue-600 hover:bg-blue-700 text-white transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm shadow-blue-500/20 hover:shadow-md"
 											type="submit"
 										>
 											{mode === 'signin'
@@ -426,11 +420,11 @@
 										</button>
 
 										{#if $config?.features.enable_signup && !($config?.onboarding ?? false)}
-											<div class=" mt-4 text-xs text-center">
+											<div class="mt-4 text-sm text-center">
 												{mode === 'signin' ? $i18n.t('没有账户?') : $i18n.t('已有账户?')}
 
 												<button
-													class=" font-medium underline"
+													class="font-medium text-blue-600 dark:text-blue-400 hover:underline ml-1"
 													type="button"
 													on:click={() => {
 														if (mode === 'signin') {
@@ -450,26 +444,28 @@
 						</form>
 
 						{#if Object.keys($config?.oauth?.providers ?? {}).length > 0}
-							<div class="inline-flex items-center justify-center w-full">
-								<hr class="w-32 h-px my-4 border-0 dark:bg-gray-100/10 bg-gray-700/10" />
+							<div class="inline-flex items-center justify-center w-full mt-6">
+								<hr class="w-32 h-px my-4 border-0 dark:bg-gray-700 bg-gray-300" />
 								{#if $config?.features.enable_login_form || $config?.features.enable_ldap}
 									<span
-										class="px-3 text-sm font-medium text-gray-900 dark:text-white bg-transparent"
+										class="px-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-transparent"
 										>{$i18n.t('或')}</span
 									>
 								{/if}
-
-								<hr class="w-32 h-px my-4 border-0 dark:bg-gray-100/10 bg-gray-700/10" />
+								<hr class="w-32 h-px my-4 border-0 dark:bg-gray-700 bg-gray-300" />
 							</div>
-							<div class="flex flex-col space-y-2">
+							
+							<div class="flex flex-col space-y-3 mt-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg p-6 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-800">
+								<div class="text-sm font-medium mb-1">{$i18n.t('使用以下方式快速登录')}</div>
+								
 								{#if $config?.oauth?.providers?.google}
 									<button
-										class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
 										on:click={() => {
 											window.location.href = `${WEBUI_BASE_URL}/oauth/google/login`;
 										}}
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="size-6 mr-3">
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="size-5 mr-3">
 											<path
 												fill="#EA4335"
 												d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
@@ -489,12 +485,12 @@
 								{/if}
 								{#if $config?.oauth?.providers?.microsoft}
 									<button
-										class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
 										on:click={() => {
 											window.location.href = `${WEBUI_BASE_URL}/oauth/microsoft/login`;
 										}}
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" class="size-6 mr-3">
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" class="size-5 mr-3">
 											<rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect
 												x="1"
 												y="11"
@@ -514,12 +510,12 @@
 								{/if}
 								{#if $config?.oauth?.providers?.github}
 									<button
-										class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
 										on:click={() => {
 											window.location.href = `${WEBUI_BASE_URL}/oauth/github/login`;
 										}}
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-6 mr-3">
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5 mr-3">
 											<path
 												fill="currentColor"
 												d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.92 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57C20.565 21.795 24 17.31 24 12c0-6.63-5.37-12-12-12z"
@@ -530,7 +526,7 @@
 								{/if}
 								{#if $config?.oauth?.providers?.oidc}
 									<button
-										class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
 										on:click={() => {
 											window.location.href = `${WEBUI_BASE_URL}/oauth/oidc/login`;
 										}}
@@ -541,7 +537,7 @@
 											viewBox="0 0 24 24"
 											stroke-width="1.5"
 											stroke="currentColor"
-											class="size-6 mr-3"
+											class="size-5 mr-3"
 										>
 											<path
 												stroke-linecap="round"
@@ -561,9 +557,9 @@
 						{/if}
 
 						{#if $config?.features.enable_ldap && $config?.features.enable_login_form}
-							<div class="mt-2">
+							<div class="mt-4">
 								<button
-									class="flex justify-center items-center text-xs w-full text-center underline"
+									class="flex justify-center items-center text-sm w-full text-center text-blue-600 dark:text-blue-400 hover:underline"
 									type="button"
 									on:click={() => {
 										if (mode === 'ldap')
@@ -576,9 +572,9 @@
 							</div>
 						{/if}
 
-						<div class="mt-2">
+						<div class="mt-4">
 							<button
-								class="flex justify-center items-center text-xs w-full text-center underline"
+								class="flex justify-center items-center text-sm w-full text-center text-blue-600 dark:text-blue-400 hover:underline"
 								type="button"
 								on:click={() => {
 									if (mode === 'phone') mode = ($config?.onboarding ?? false) ? 'signup' : 'signin';
@@ -593,5 +589,43 @@
 				{/if}
 			</div>
 		</div>
+		
+		<!-- 版权信息 -->
+		<div class="fixed bottom-4 left-0 right-0 text-center text-xs text-gray-500 dark:text-gray-600">
+			© {new Date().getFullYear()} {$WEBUI_NAME}
+		</div>
 	{/if}
 </div>
+
+<style>
+	:global(body) {
+		@apply overflow-hidden;
+	}
+	
+	.bg-pattern {
+		background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+	}
+	
+	input {
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+	}
+	
+	.dark input {
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+	}
+	
+	/* 自定义输入框样式 */
+	input:focus {
+		@apply outline-none;
+		animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+	}
+	
+	@keyframes pulse {
+		0%, 100% {
+			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.2);
+		}
+		50% {
+			box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+		}
+	}
+</style>
