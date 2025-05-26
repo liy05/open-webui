@@ -50,6 +50,8 @@
 	import PhotoSolid from '../icons/PhotoSolid.svelte';
 	import Photo from '../icons/Photo.svelte';
 	import CommandLine from '../icons/CommandLine.svelte';
+	import DocumentArrowUpSolid from '../icons/DocumentArrowUpSolid.svelte';
+	import CameraSolid from '../icons/CameraSolid.svelte';
 	import { KokoroWorker } from '$lib/workers/KokoroWorker';
 	import ToolServersModal from './ToolServersModal.svelte';
 	import Wrench from '../icons/Wrench.svelte';
@@ -475,6 +477,22 @@
 
 							filesInputElement.value = '';
 						}}
+					/>
+
+					<!-- Hidden file input used to open the camera on mobile -->
+					<input
+						id="camera-input"
+						type="file"
+						accept="image/*"
+						capture="environment"
+						on:change={(event) => {
+							const inputFiles = Array.from(event.target?.files);
+							if (inputFiles && inputFiles.length > 0) {
+								console.log(inputFiles);
+								inputFilesHandler(inputFiles);
+							}
+						}}
+						style="display: none;"
 					/>
 
 					{#if recording}
@@ -1037,11 +1055,6 @@
 									<div class="ml-1 self-end flex items-center flex-1 max-w-[80%] gap-0.5">
 										<InputMenu
 											bind:selectedToolIds
-											{screenCaptureHandler}
-											{inputFilesHandler}
-											uploadFilesHandler={() => {
-												filesInputElement.click();
-											}}
 											uploadGoogleDriveHandler={async () => {
 												try {
 													const fileData = await createPicker();
@@ -1188,6 +1201,50 @@
 									</div>
 
 									<div class="self-end flex space-x-1 mr-1 shrink-0">
+										<!-- 截图按钮 -->
+										{#if $_user?.role === 'admin' || ($_user?.permissions?.chat?.file_upload ?? true)}
+											<Tooltip content={$i18n.t('Capture')}>
+												<button
+													class="text-gray-600 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 transition rounded-full p-1.5 self-center"
+													type="button"
+													on:click={() => {
+														const detectMobile = () => {
+															const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+															return /android|iphone|ipad|ipod|windows phone/i.test(userAgent);
+														};
+
+														if (!detectMobile()) {
+															screenCaptureHandler();
+														} else {
+															const cameraInputElement = document.getElementById('camera-input');
+															if (cameraInputElement) {
+																cameraInputElement.click();
+															}
+														}
+													}}
+													aria-label="Capture"
+												>
+													<CameraSolid />
+												</button>
+											</Tooltip>
+										{/if}
+
+										<!-- 文件上传按钮 -->
+										{#if $_user?.role === 'admin' || ($_user?.permissions?.chat?.file_upload ?? true)}
+											<Tooltip content={$i18n.t('Upload Files')}>
+												<button
+													class="text-gray-600 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 transition rounded-full p-1.5 self-center"
+													type="button"
+													on:click={() => {
+														filesInputElement.click();
+													}}
+													aria-label="Upload Files"
+												>
+													<DocumentArrowUpSolid />
+												</button>
+											</Tooltip>
+										{/if}
+
 										{#if (!history?.currentId || history.messages[history.currentId]?.done == true) && ($_user?.role === 'admin' || ($_user?.permissions?.chat?.stt ?? true))}
 											<Tooltip content={$i18n.t('Record voice')}>
 												<button
