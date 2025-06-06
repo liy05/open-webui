@@ -78,6 +78,7 @@ from open_webui.routers import (
     tools,
     users,
     utils,
+    wecom_auth,
 )
 
 from open_webui.routers.retrieval import (
@@ -319,6 +320,12 @@ from open_webui.config import (
     LDAP_USE_TLS,
     LDAP_CA_CERT_FILE,
     LDAP_CIPHERS,
+    # Enterprise WeChat
+    ENABLE_WECOM_AUTH,
+    WECOM_CORP_ID,
+    WECOM_AGENT_ID,
+    WECOM_SECRET,
+    WECOM_REDIRECT_URI,
     # Misc
     ENV,
     CACHE_DIR,
@@ -612,6 +619,12 @@ app.state.config.LDAP_USE_TLS = LDAP_USE_TLS
 app.state.config.LDAP_CA_CERT_FILE = LDAP_CA_CERT_FILE
 app.state.config.LDAP_CIPHERS = LDAP_CIPHERS
 
+# Enterprise WeChat Configuration
+app.state.config.ENABLE_WECOM_AUTH = ENABLE_WECOM_AUTH
+app.state.config.WECOM_CORP_ID = WECOM_CORP_ID
+app.state.config.WECOM_AGENT_ID = WECOM_AGENT_ID
+app.state.config.WECOM_SECRET = WECOM_SECRET
+app.state.config.WECOM_REDIRECT_URI = WECOM_REDIRECT_URI
 
 app.state.AUTH_TRUSTED_EMAIL_HEADER = WEBUI_AUTH_TRUSTED_EMAIL_HEADER
 app.state.AUTH_TRUSTED_NAME_HEADER = WEBUI_AUTH_TRUSTED_NAME_HEADER
@@ -1012,6 +1025,7 @@ app.include_router(configs.router, prefix="/api/v1/configs", tags=["configs"])
 
 app.include_router(auths.router, prefix="/api/v1/auths", tags=["auths"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(wecom_auth.router, prefix="/api/v1/auths/wecom", tags=["wecom_auth"])
 
 
 app.include_router(channels.router, prefix="/api/v1/channels", tags=["channels"])

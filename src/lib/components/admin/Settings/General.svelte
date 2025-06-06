@@ -13,6 +13,7 @@
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
+	import WecomAuth from './WecomAuth.svelte';
 	import { WEBUI_BUILD_HASH, WEBUI_VERSION } from '$lib/constants';
 	import { config, showChangelog } from '$lib/stores';
 	import { compareVersion } from '$lib/utils';
@@ -581,6 +582,9 @@
 						</div>
 					</div>
 				</div>
+
+				<!-- 企业微信认证配置 -->
+				<WecomAuth {saveHandler} />
 
 				<div class="mb-3">
 					<div class=" mb-2.5 text-base font-medium">{$i18n.t('Features')}</div>

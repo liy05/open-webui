@@ -105,6 +105,10 @@ class UpdatePasswordForm(BaseModel):
     new_password: str
 
 
+class WeComAuthForm(BaseModel):
+    code: str
+
+
 class UserResponse(BaseModel):
     id: str
     name: str

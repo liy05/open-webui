@@ -2855,3 +2855,38 @@ WEBHOOK_SECRET = PersistentConfig(
     "webhook.secret",
     os.environ.get("WEBHOOK_SECRET", ""),
 )
+
+####################################
+# Enterprise WeChat Config  
+####################################
+
+# 企业微信相关配置
+WECOM_CORP_ID = PersistentConfig(
+    "WECOM_CORP_ID",
+    "oauth.wecom.corp_id",
+    os.environ.get("WECOM_CORP_ID", ""),
+)
+
+WECOM_AGENT_ID = PersistentConfig(
+    "WECOM_AGENT_ID", 
+    "oauth.wecom.agent_id",
+    os.environ.get("WECOM_AGENT_ID", ""),
+)
+
+WECOM_SECRET = PersistentConfig(
+    "WECOM_SECRET",
+    "oauth.wecom.secret", 
+    os.environ.get("WECOM_SECRET", ""),
+)
+
+WECOM_REDIRECT_URI = PersistentConfig(
+    "WECOM_REDIRECT_URI",
+    "oauth.wecom.redirect_uri",
+    os.environ.get("WECOM_REDIRECT_URI", ""),
+)
+
+ENABLE_WECOM_AUTH = PersistentConfig(
+    "ENABLE_WECOM_AUTH",
+    "oauth.wecom.enable",
+    os.environ.get("ENABLE_WECOM_AUTH", "false").lower() == "true",
+)

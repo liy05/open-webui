@@ -1,0 +1,9 @@
+onlyBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - core-js
+  - cypress
+  - esbuild
+  - onnxruntime-node
+  - protobufjs
+  - sharp
+  - svelte-preprocess

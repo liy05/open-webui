@@ -893,6 +893,67 @@ async def update_ldap_config(
 
 
 ############################
+# WeChat Enterprise Config
+############################
+
+class WeComServerConfig(BaseModel):
+    corp_id: str
+    agent_id: str
+    secret: str 
+    redirect_uri: str
+
+
+@router.get("/admin/config/wecom/server", response_model=WeComServerConfig)
+async def get_wecom_server(request: Request, user=Depends(get_admin_user)):
+    return {
+        "corp_id": request.app.state.config.WECOM_CORP_ID,
+        "agent_id": request.app.state.config.WECOM_AGENT_ID,
+        "secret": request.app.state.config.WECOM_SECRET,
+        "redirect_uri": request.app.state.config.WECOM_REDIRECT_URI,
+    }
+
+
+@router.post("/admin/config/wecom/server")
+async def update_wecom_server(
+    request: Request, form_data: WeComServerConfig, user=Depends(get_admin_user)
+):
+    required_fields = ["corp_id", "agent_id", "secret", "redirect_uri"]
+    for key in required_fields:
+        value = getattr(form_data, key)
+        if not value:
+            raise HTTPException(400, detail=f"Required field {key} is empty")
+
+    request.app.state.config.WECOM_CORP_ID = form_data.corp_id
+    request.app.state.config.WECOM_AGENT_ID = form_data.agent_id
+    request.app.state.config.WECOM_SECRET = form_data.secret
+    request.app.state.config.WECOM_REDIRECT_URI = form_data.redirect_uri
+
+    return {
+        "corp_id": request.app.state.config.WECOM_CORP_ID,
+        "agent_id": request.app.state.config.WECOM_AGENT_ID,
+        "secret": request.app.state.config.WECOM_SECRET,
+        "redirect_uri": request.app.state.config.WECOM_REDIRECT_URI,
+    }
+
+
+@router.get("/admin/config/wecom")
+async def get_wecom_config(request: Request, user=Depends(get_admin_user)):
+    return {"ENABLE_WECOM_AUTH": request.app.state.config.ENABLE_WECOM_AUTH}
+
+
+class WeComConfigForm(BaseModel):
+    enable_wecom_auth: Optional[bool] = None
+
+
+@router.post("/admin/config/wecom")
+async def update_wecom_config(
+    request: Request, form_data: WeComConfigForm, user=Depends(get_admin_user)
+):
+    request.app.state.config.ENABLE_WECOM_AUTH = form_data.enable_wecom_auth
+    return {"ENABLE_WECOM_AUTH": request.app.state.config.ENABLE_WECOM_AUTH}
+
+
+############################
 # API Key
 ############################
 
