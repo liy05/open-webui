@@ -12,7 +12,9 @@
 		userSignIn,
 		userSignUp,
 		sendSmsCode,
-		phoneSignIn
+		phoneSignIn,
+		getWeComConfig,
+		weComAuth
 	} from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
@@ -22,10 +24,36 @@
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import OnBoarding from '$lib/components/OnBoarding.svelte';
+	
+	// 静态导入企业微信 JS-SDK
+	import * as ww from '@wecom/jssdk';
 
 	const i18n = getContext('i18n');
 
 	let loaded = false;
+
+	// 企业微信配置
+	let wecomConfig = {
+		enabled: false,
+		corp_id: '',
+		agent_id: '',
+		redirect_uri: ''
+	};
+
+	// 企业微信登录组件相关变量
+	let wecomLoginPanel = null;
+	let wecomInitialized = false;
+
+	// 响应模式变化，在切换到企业微信时自动初始化
+	$: if (mode === 'wecom' && !wecomInitialized && wecomConfig.enabled) {
+		setTimeout(() => {
+			const container = document.getElementById('wecom-login-container');
+			if (container) {
+				console.log('响应式初始化企业微信登录组件');
+				initWeComLoginPanel();
+			}
+		}, 100);
+	}
 
 	let mode = $config?.features.enable_ldap ? 'ldap' : 'phone';
 
@@ -35,7 +63,7 @@
 	let phoneNumber = '';
 	let verificationCode = '';
 	let countDown = 0;
-	let intervalId: number | null = null;
+	let intervalId: NodeJS.Timeout | null = null;
 
 	let ldapUsername = '';
 
@@ -98,6 +126,93 @@
 		await setSessionUser(sessionUser);
 	};
 
+	// 初始化企业微信登录组件
+	const initWeComLoginPanel = async () => {
+		if (!wecomConfig.enabled || !wecomConfig.corp_id || !wecomConfig.agent_id) {
+			console.error('企业微信配置不完整');
+			return;
+		}
+
+		if (wecomInitialized) {
+			console.log('企业微信登录组件已初始化，跳过重复初始化');
+			return;
+		}
+
+		try {
+			// 检查容器是否存在
+			const container = document.getElementById('wecom-login-container');
+			if (!container) {
+				console.error('企业微信登录容器不存在');
+				return;
+			}
+
+			// 清空容器并重置
+			container.innerHTML = '';
+			
+			// 如果之前有登录面板，先销毁
+			if (wecomLoginPanel && wecomLoginPanel.destroy) {
+				try {
+					wecomLoginPanel.destroy();
+				} catch (e) {
+					console.log('销毁旧的登录面板时出错:', e);
+				}
+				wecomLoginPanel = null;
+			}
+
+			// 使用静态导入的 ww 模块
+			wecomLoginPanel = ww.createWWLoginPanel({
+				el: '#wecom-login-container',
+				params: {
+					appid: wecomConfig.corp_id,
+					agentid: wecomConfig.agent_id,
+					redirect_uri: wecomConfig.redirect_uri,
+					state: 'openwebui_auth_' + Math.random().toString(36).substr(2, 9)
+				},
+				onCheckWeComLogin({ isWeComLogin }) {
+					console.log('企业微信环境检测:', isWeComLogin);
+				},
+				onLoginSuccess({ code }) {
+					console.log('企业微信登录成功，获取到code:', code);
+					handleWeComLogin(code);
+				},
+				onLoginFail(error) {
+					console.error('企业微信登录失败:', error);
+					toast.error('企业微信登录失败，请重试');
+				}
+			});
+
+			wecomInitialized = true;
+			console.log('企业微信登录组件初始化成功');
+			
+		} catch (error) {
+			console.error('企业微信 JS-SDK 初始化失败:', error);
+			toast.error('企业微信登录组件加载失败');
+		}
+	};
+
+	// 处理企业微信登录
+	const handleWeComLogin = async (authCode: string) => {
+		try {
+			const sessionUser = await weComAuth(authCode);
+			if (sessionUser) {
+				await setSessionUser(sessionUser);
+			} else {
+				toast.error('企业微信登录失败，请重试');
+			}
+		} catch (error) {
+			console.error('企业微信登录处理失败:', error);
+			toast.error(`企业微信登录失败: ${error}`);
+		}
+	};
+
+	// 企业微信登录处理（保留用于兼容性）
+	const wecomSignInHandler = async () => {
+		// 现在使用JS-SDK组件，不需要额外处理
+		if (!wecomInitialized) {
+			await initWeComLoginPanel();
+		}
+	};
+
 	const sendSmsCodeHandler = async () => {
 		if (countDown > 0) return;
 
@@ -106,7 +221,6 @@
 			return;
 		}
 
-debugger;
 		let success = false;
 		
 		try {
@@ -142,7 +256,9 @@ debugger;
 	};
 
 	const submitHandler = async () => {
-		if (mode === 'phone') {
+		if (mode === 'wecom') {
+			await wecomSignInHandler();
+		} else if (mode === 'phone') {
 			await phoneSignInHandler();
 		} else if (mode === 'ldap') {
 			await ldapSignInHandler();
@@ -177,11 +293,32 @@ debugger;
 		await setSessionUser(sessionUser);
 	};
 
+	// 检查企业微信回调（保留用于兼容其他登录方式）
+	const checkWeComCallback = async () => {
+		const code = querystringValue('code');
+		const state = querystringValue('state');
+		
+		if (code && state && (state === 'openwebui_auth' || state.startsWith('openwebui_auth_'))) {
+			try {
+				// 清理URL参数，避免重复处理
+				const url = new URL(window.location.href);
+				url.searchParams.delete('code');
+				url.searchParams.delete('state');
+				window.history.replaceState({}, document.title, url.toString());
+
+				await handleWeComLogin(code);
+			} catch (error) {
+				console.error('WeChat Enterprise login error:', error);
+				toast.error(`企业微信登录失败: ${error}`);
+			}
+		}
+	};
+
 	let onboarding = false;
 
 	async function setLogoImage() {
 		await tick();
-		const logo = document.getElementById('logo');
+		const logo = document.getElementById('logo') as HTMLImageElement;
 
 		if (logo) {
 			const isDarkMode = document.documentElement.classList.contains('dark');
@@ -199,7 +336,25 @@ debugger;
 			const redirectPath = querystringValue('redirect') || '/';
 			goto(redirectPath);
 		}
+		
+		// 获取企业微信配置
+		try {
+			const config = await getWeComConfig();
+			if (config) {
+				wecomConfig = config;
+				// 如果企业微信启用且配置完整，设置为默认登录方式
+				if (wecomConfig.enabled && wecomConfig.corp_id && wecomConfig.agent_id) {
+					mode = 'wecom';
+					// 等待DOM更新后初始化企业微信登录组件
+					setTimeout(initWeComLoginPanel, 100);
+				}
+			}
+		} catch (error) {
+			console.error('Failed to get WeChat Enterprise config:', error);
+		}
+
 		await checkOauthCallback();
+		await checkWeComCallback();
 
 		loaded = true;
 		setLogoImage();
@@ -226,390 +381,351 @@ debugger;
 	}}
 />
 
-<div class="w-full h-screen max-h-[100dvh] relative overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
-	<div class="absolute inset-0 bg-pattern opacity-10 dark:opacity-5"></div>
-	
-	<!-- Decorative elements -->
-	<div class="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-purple-200 dark:bg-purple-900/20 blur-3xl"></div>
-	<div class="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-200 dark:bg-blue-900/20 blur-3xl"></div>
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-950 dark:via-blue-950 dark:to-indigo-950 relative overflow-hidden">
+	<!-- 背景装饰 -->
+	<div class="absolute inset-0 bg-grid-pattern opacity-5"></div>
+	<div class="absolute top-0 left-0 w-full h-full">
+		<div class="absolute top-[-50%] right-[-20%] w-96 h-96 bg-blue-400/20 rounded-full blur-3xl animate-pulse"></div>
+		<div class="absolute bottom-[-50%] left-[-20%] w-96 h-96 bg-purple-400/20 rounded-full blur-3xl animate-pulse"></div>
+	</div>
 
 	<div class="w-full absolute top-0 left-0 right-0 h-8 drag-region z-50" />
 
 	{#if loaded}
-		<div class="fixed m-10 z-50">
-			<div class="flex space-x-2">
-				<div class="self-center flex items-center">
-					<img
-						id="logo"
-						crossorigin="anonymous"
-						src="/static/logo.svg"
-						class="w-12 h-12 drop-shadow-lg"
-						alt="Open WebUI Logo"
-					/>
-					<span class="ml-3 text-xl font-bold text-gray-800 dark:text-white">{$WEBUI_NAME}</span>
-				</div>
+		<!-- 头部Logo -->
+		<div class="absolute top-8 left-8 z-50">
+			<div class="flex items-center space-x-3">
+				<img
+					id="logo"
+					crossorigin="anonymous"
+					src="/static/logo.svg"
+					class="w-10 h-10 drop-shadow-sm"
+					alt="Logo"
+				/>
+				<span class="text-lg font-bold text-gray-900 dark:text-white">{$WEBUI_NAME}</span>
 			</div>
 		</div>
 
-		<div class="fixed bg-transparent min-h-screen w-full flex justify-center font-primary z-50 text-black dark:text-white">
-			<div class="w-full sm:max-w-md px-10 min-h-screen flex flex-col text-center">
+		<div class="min-h-screen flex items-center justify-center p-4 relative z-10">
+			<div class="w-full max-w-md">
 				{#if ($config?.features.auth_trusted_header ?? false) || $config?.features.auth === false}
-					<div class="my-auto pb-10 w-full">
-						<div class="flex items-center justify-center gap-3 text-xl sm:text-2xl text-center font-semibold dark:text-gray-200">
-							<div>
-								{$i18n.t('正在登录到 {{WEBUI_NAME}}', { WEBUI_NAME: $WEBUI_NAME })}
+					<!-- 加载状态 -->
+					<div class="bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-800/50 p-8">
+						<div class="text-center">
+							<div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+								<svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/>
+								</svg>
 							</div>
-							<div><Spinner /></div>
+							<h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">正在登录</h2>
+							<p class="text-gray-600 dark:text-gray-400">请稍候片刻...</p>
 						</div>
 					</div>
 				{:else}
-					<div class="my-auto pb-10 w-full dark:text-gray-100">
-						<form
-							class="flex flex-col justify-center bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg p-8 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-800"
-							on:submit={(e) => {
-								e.preventDefault();
-								submitHandler();
-							}}
-						>
-							<div class="mb-6">
-								<div class="text-2xl font-bold">
-									{#if $config?.onboarding ?? false}
-										{$i18n.t(`开始使用 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
-									{:else if mode === 'ldap'}
-										{$i18n.t(`使用LDAP登录 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
-									{:else if mode === 'signin'}
-										{$i18n.t(`{{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+					<!-- 主登录卡片 -->
+					<div class="bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-800/50 overflow-hidden">
+						<!-- 顶部装饰条 -->
+						<div class="h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500"></div>
+						
+						<div class="p-6">
+							<!-- 标题区域 -->
+							<div class="text-center mb-6">
+								<h1 class="text-xl font-bold text-gray-900 dark:text-white">
+									{#if mode === 'wecom'}
+										企业微信登录
 									{:else if mode === 'phone'}
-										{$i18n.t(`{{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										手机号登录
+									{:else if mode === 'signup'}
+										创建账户
 									{:else}
-										{$i18n.t(`注册 {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										登录
 									{/if}
-								</div>
-
-								{#if ($config?.onboarding ?? false) && !($config?.features.auth_trusted_header ?? false) && $config?.features.auth !== false}
-									<div class="mt-2 text-sm font-medium text-gray-600 dark:text-gray-400">
-										ⓘ {$WEBUI_NAME}
-										{$i18n.t('不会建立任何外部连接，您的数据安全地存储在本地托管的服务器上。')}
-									</div>
-								{/if}
+								</h1>
 							</div>
 
-							{#if $config?.features.enable_login_form || $config?.features.enable_ldap}
-								<div class="flex flex-col mt-2 space-y-4">
-									{#if mode === 'signup'}
-										<div>
-											<label for="name" class="text-sm font-medium text-left mb-1.5 block"
-												>{$i18n.t('姓名')}</label
-											>
-											<input
-												bind:value={name}
-												type="text"
-												id="name"
-												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-												autocomplete="name"
-												placeholder={$i18n.t('请输入您的全名')}
-												required
-											/>
+							<!-- 表单内容 -->
+							<form on:submit={(e) => { e.preventDefault(); submitHandler(); }}>
+								{#if mode === 'wecom'}
+									<!-- 企业微信登录 -->
+									<div class="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
+										<div id="wecom-login-container" class="min-h-[180px] flex items-center justify-center">
+											{#if !wecomInitialized}
+												<div class="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+											{/if}
 										</div>
-									{/if}
-
-									{#if mode === 'ldap'}
-										<div>
-											<label for="username" class="text-sm font-medium text-left mb-1.5 block"
-												>{$i18n.t('用户名')}</label
-											>
-											<input
-												bind:value={ldapUsername}
-												type="text"
-												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-												autocomplete="username"
-												name="username"
-												id="username"
-												placeholder={$i18n.t('请输入您的用户名')}
-												required
-											/>
-										</div>
-									{:else if mode === 'phone'}
-										<div>
-											<label for="phone_number" class="text-sm font-medium text-left mb-1.5 block"
-												>{$i18n.t('手机号码')}</label
-											>
-											<input
-												bind:value={phoneNumber}
-												type="tel"
-												id="phone_number"
-												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-												autocomplete="tel"
-												name="tel"
-												placeholder={$i18n.t('请输入手机号码')}
-												required
-											/>
-										</div>
-										<div>
-											<label
-												for="verification_code"
-												class="text-sm font-medium text-left mb-1.5 block">{$i18n.t('验证码')}</label
-											>
-											<div class="flex">
+									</div>
+								{:else}
+									<!-- 常规登录表单 -->
+									<div class="space-y-4">
+										{#if mode === 'signup'}
+											<div>
+												<label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">姓名</label>
 												<input
-													bind:value={verificationCode}
+													bind:value={name}
 													type="text"
-													id="verification_code"
-													class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-													placeholder={$i18n.t('请输入验证码')}
-													autocomplete="one-time-code"
+													id="name"
+													class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+													placeholder="请输入您的姓名"
 													required
 												/>
+											</div>
+										{/if}
+
+										{#if mode === 'phone'}
+											<div>
+												<label for="phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">手机号码</label>
+												<input
+													bind:value={phoneNumber}
+													type="tel"
+													id="phone"
+													class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+													placeholder="请输入手机号码"
+													required
+												/>
+											</div>
+											<div>
+												<label for="code" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">验证码</label>
+												<div class="flex space-x-3">
+													<input
+														bind:value={verificationCode}
+														type="text"
+														id="code"
+														class="flex-1 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+														placeholder="验证码"
+														required
+													/>
+													<button
+														type="button"
+														on:click={sendSmsCodeHandler}
+														disabled={countDown > 0}
+														class="px-4 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600 rounded-xl transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+													>
+														{countDown > 0 ? `${countDown}s` : '获取验证码'}
+													</button>
+												</div>
+											</div>
+										{:else if mode === 'ldap'}
+											<div>
+												<label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">用户名</label>
+												<input
+													bind:value={ldapUsername}
+													type="text"
+													id="username"
+													class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+													placeholder="请输入用户名"
+													required
+												/>
+											</div>
+										{:else}
+											<div>
+												<label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">邮箱</label>
+												<input
+													bind:value={email}
+													type="email"
+													id="email"
+													class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+													placeholder="请输入邮箱地址"
+													required
+												/>
+											</div>
+										{/if}
+
+										{#if mode !== 'phone'}
+											<div>
+												<label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">密码</label>
+												<input
+													bind:value={password}
+													type="password"
+													id="password"
+													class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+													placeholder="请输入密码"
+													required
+												/>
+											</div>
+										{/if}
+
+										{#if mode !== 'wecom'}
+											<button
+												type="submit"
+												class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium py-3 rounded-xl transition-all duration-200 transform hover:scale-[1.02] shadow-lg shadow-blue-500/25"
+											>
+												{#if mode === 'signup'}
+													创建账户
+												{:else if mode === 'phone'}
+													验证并登录
+												{:else if mode === 'ldap'}
+													LDAP 登录
+												{:else}
+													登录
+												{/if}
+											</button>
+										{/if}
+
+										{#if mode === 'signin' && $config?.features.enable_signup}
+											<div class="text-center">
+												<span class="text-sm text-gray-600 dark:text-gray-400">还没有账户？</span>
 												<button
 													type="button"
-													class="text-sm px-4 py-2.5 ml-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl whitespace-nowrap hover:bg-gray-200 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-													on:click={sendSmsCodeHandler}
-													disabled={countDown > 0}
+													on:click={() => mode = 'signup'}
+													class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium ml-1"
 												>
-													{countDown > 0 ? `${countDown}秒` : $i18n.t('获取验证码')}
+													立即注册
 												</button>
 											</div>
-										</div>
-									{:else}
-										<div>
-											<label for="email" class="text-sm font-medium text-left mb-1.5 block"
-												>{$i18n.t('邮箱')}</label
-											>
-											<input
-												bind:value={email}
-												type="email"
-												id="email"
-												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-												autocomplete="email"
-												name="email"
-												placeholder={$i18n.t('请输入您的邮箱')}
-												required
-											/>
-										</div>
-									{/if}
-
-									{#if mode !== 'phone'}
-										<div>
-											<label for="password" class="text-sm font-medium text-left mb-1.5 block"
-												>{$i18n.t('密码')}</label
-											>
-											<input
-												bind:value={password}
-												type="password"
-												id="password"
-												class="w-full px-4 py-2.5 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-												placeholder={$i18n.t('请输入您的密码')}
-												autocomplete="current-password"
-												name="current-password"
-												required
-											/>
-										</div>
-									{/if}
-								</div>
-							{/if}
-
-							<div class="mt-6">
-								{#if $config?.features.enable_login_form || $config?.features.enable_ldap}
-									{#if mode === 'ldap'}
-										<button
-											class="bg-blue-600 hover:bg-blue-700 text-white transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm shadow-blue-500/20 hover:shadow-md"
-											type="submit"
-										>
-											{$i18n.t('认证')}
-										</button>
-									{:else if mode === 'phone'}
-										<button
-											class="bg-blue-600 hover:bg-blue-700 text-white transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm shadow-blue-500/20 hover:shadow-md"
-											type="submit"
-										>
-											{$i18n.t('验证并登录')}
-										</button>
-									{:else}
-										<button
-											class="bg-blue-600 hover:bg-blue-700 text-white transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm shadow-blue-500/20 hover:shadow-md"
-											type="submit"
-										>
-											{mode === 'signin'
-												? $i18n.t('登录')
-												: ($config?.onboarding ?? false)
-													? $i18n.t('创建管理员账户')
-													: $i18n.t('创建账户')}
-										</button>
-
-										{#if $config?.features.enable_signup && !($config?.onboarding ?? false)}
-											<div class="mt-4 text-sm text-center">
-												{mode === 'signin' ? $i18n.t('没有账户?') : $i18n.t('已有账户?')}
-
+										{:else if mode === 'signup'}
+											<div class="text-center">
+												<span class="text-sm text-gray-600 dark:text-gray-400">已有账户？</span>
 												<button
-													class="font-medium text-blue-600 dark:text-blue-400 hover:underline ml-1"
 													type="button"
-													on:click={() => {
-														if (mode === 'signin') {
-															mode = 'signup';
-														} else {
-															mode = 'signin';
-														}
-													}}
+													on:click={() => mode = 'signin'}
+													class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium ml-1"
 												>
-													{mode === 'signin' ? $i18n.t('注册') : $i18n.t('登录')}
+													立即登录
 												</button>
 											</div>
 										{/if}
+									</div>
+								{/if}
+							</form>
+						</div>
+
+						<!-- 底部登录方式切换 -->
+						<div class="bg-gray-50/50 dark:bg-gray-800/50 px-6 py-4 border-t border-gray-100 dark:border-gray-800">
+							<!-- 登录方式切换按钮 -->
+							<div class="flex flex-wrap gap-2 justify-center">
+									<!-- 企业微信登录 -->
+									{#if wecomConfig?.enabled}
+										<button
+											type="button"
+											on:click={() => {
+												if (mode === 'wecom') {
+													mode = 'signin';
+												} else {
+													mode = 'wecom';
+													// 重置初始化状态，确保可以重新初始化
+													wecomInitialized = false;
+													// 使用更长的延迟确保DOM更新完成
+													setTimeout(() => {
+														console.log('切换到企业微信登录模式，开始初始化');
+														initWeComLoginPanel();
+													}, 200);
+												}
+											}}
+											class="flex items-center space-x-2 px-3 py-2 rounded-lg transition-all text-sm border {mode === 'wecom' ? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 dark:border-gray-600'}"
+										>
+											<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+												<path d="M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10s10-4.48,10-10S17.52,2,12,2z"/>
+											</svg>
+											<span>企业微信</span>
+										</button>
 									{/if}
-								{/if}
-							</div>
-						</form>
 
-						{#if Object.keys($config?.oauth?.providers ?? {}).length > 0}
-							<div class="inline-flex items-center justify-center w-full mt-6">
-								<hr class="w-32 h-px my-4 border-0 dark:bg-gray-700 bg-gray-300" />
-								{#if $config?.features.enable_login_form || $config?.features.enable_ldap}
-									<span
-										class="px-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-transparent"
-										>{$i18n.t('或')}</span
-									>
-								{/if}
-								<hr class="w-32 h-px my-4 border-0 dark:bg-gray-700 bg-gray-300" />
-							</div>
-							
-							<div class="flex flex-col space-y-3 mt-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg p-6 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-800">
-								<div class="text-sm font-medium mb-1">{$i18n.t('使用以下方式快速登录')}</div>
-								
-								{#if $config?.oauth?.providers?.google}
+									<!-- 手机号登录 - 始终显示 -->
 									<button
-										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
-										on:click={() => {
-											window.location.href = `${WEBUI_BASE_URL}/oauth/google/login`;
-										}}
+										type="button"
+										on:click={() => mode = mode === 'phone' ? 'signin' : 'phone'}
+										class="flex items-center space-x-2 px-3 py-2 rounded-lg transition-all text-sm border {mode === 'phone' ? 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 dark:border-gray-600'}"
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="size-5 mr-3">
-											<path
-												fill="#EA4335"
-												d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-											/><path
-												fill="#4285F4"
-												d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-											/><path
-												fill="#FBBC05"
-												d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-											/><path
-												fill="#34A853"
-												d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-											/><path fill="none" d="M0 0h48v48H0z" />
+										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+											<path d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z"/>
 										</svg>
-										<span>{$i18n.t('使用 {{provider}} 继续', { provider: 'Google' })}</span>
+										<span>手机号</span>
 									</button>
-								{/if}
-								{#if $config?.oauth?.providers?.microsoft}
+
+									<!-- 邮箱登录 - 始终显示 -->
 									<button
-										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
-										on:click={() => {
-											window.location.href = `${WEBUI_BASE_URL}/oauth/microsoft/login`;
-										}}
+										type="button"
+										on:click={() => mode = mode === 'signin' || mode === 'signup' ? 'phone' : 'signin'}
+										class="flex items-center space-x-2 px-3 py-2 rounded-lg transition-all text-sm border {mode === 'signin' || mode === 'signup' ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-700' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 dark:border-gray-600'}"
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" class="size-5 mr-3">
-											<rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect
-												x="1"
-												y="11"
-												width="9"
-												height="9"
-												fill="#00a4ef"
-											/><rect x="11" y="1" width="9" height="9" fill="#7fba00" /><rect
-												x="11"
-												y="11"
-												width="9"
-												height="9"
-												fill="#ffb900"
-											/>
+										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+											<path d="M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z"/>
 										</svg>
-										<span>{$i18n.t('使用 {{provider}} 继续', { provider: 'Microsoft' })}</span>
+										<span>邮箱</span>
 									</button>
-								{/if}
-								{#if $config?.oauth?.providers?.github}
-									<button
-										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
-										on:click={() => {
-											window.location.href = `${WEBUI_BASE_URL}/oauth/github/login`;
-										}}
-									>
-										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-5 mr-3">
-											<path
-												fill="currentColor"
-												d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.92 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57C20.565 21.795 24 17.31 24 12c0-6.63-5.37-12-12-12z"
-											/>
-										</svg>
-										<span>{$i18n.t('使用 {{provider}} 继续', { provider: 'GitHub' })}</span>
-									</button>
-								{/if}
-								{#if $config?.oauth?.providers?.oidc}
-									<button
-										class="flex justify-center items-center bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition w-full rounded-xl font-medium text-sm py-2.5 shadow-sm hover:shadow-md"
-										on:click={() => {
-											window.location.href = `${WEBUI_BASE_URL}/oauth/oidc/login`;
-										}}
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											fill="none"
-											viewBox="0 0 24 24"
-											stroke-width="1.5"
-											stroke="currentColor"
-											class="size-5 mr-3"
+
+									<!-- LDAP登录 -->
+									{#if $config?.features.enable_ldap}
+										<button
+											type="button"
+											on:click={() => mode = mode === 'ldap' ? 'signin' : 'ldap'}
+											class="flex items-center space-x-2 px-3 py-2 rounded-lg transition-all text-sm border {mode === 'ldap' ? 'bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-700' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 dark:border-gray-600'}"
 										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z"
-											/>
-										</svg>
-
-										<span
-											>{$i18n.t('使用 {{provider}} 继续', {
-												provider: $config?.oauth?.providers?.oidc ?? 'SSO'
-											})}</span
-										>
-									</button>
-								{/if}
+											<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+												<path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z"/>
+											</svg>
+											<span>LDAP</span>
+										</button>
+									{/if}
 							</div>
-						{/if}
 
-						{#if $config?.features.enable_ldap && $config?.features.enable_login_form}
-							<div class="mt-4">
-								<button
-									class="flex justify-center items-center text-sm w-full text-center text-blue-600 dark:text-blue-400 hover:underline"
-									type="button"
-									on:click={() => {
-										if (mode === 'ldap')
-											mode = ($config?.onboarding ?? false) ? 'signup' : 'signin';
-										else mode = 'ldap';
-									}}
-								>
-									<span>{mode === 'ldap' ? $i18n.t('使用邮箱继续') : $i18n.t('使用LDAP继续')}</span>
-								</button>
-							</div>
-						{/if}
+							<!-- OAuth 登录 -->
+							{#if Object.keys($config?.oauth?.providers ?? {}).length > 0}
+								<div class="relative">
+									<div class="absolute inset-0 flex items-center">
+										<div class="w-full border-t border-gray-200 dark:border-gray-700"></div>
+									</div>
+									<div class="relative flex justify-center text-sm">
+										<span class="px-2 bg-gray-50/50 dark:bg-gray-800/50 text-gray-500">或使用</span>
+									</div>
+								</div>
 
-						<div class="mt-4">
-							<button
-								class="flex justify-center items-center text-sm w-full text-center text-blue-600 dark:text-blue-400 hover:underline"
-								type="button"
-								on:click={() => {
-									if (mode === 'phone') mode = ($config?.onboarding ?? false) ? 'signup' : 'signin';
-									else mode = 'phone';
-								}}
-							>
-								<span>{mode === 'phone' ? $i18n.t('使用邮箱继续') : $i18n.t('使用手机号继续')}</span
-								>
-							</button>
+								<div class="flex flex-wrap gap-2 justify-center">
+									{#if $config?.oauth?.providers?.google}
+											<button
+												type="button"
+												on:click={() => window.location.href = `${WEBUI_BASE_URL}/oauth/google/login`}
+												class="flex items-center space-x-2 px-4 py-2 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors text-sm border border-gray-200 dark:border-gray-600"
+											>
+												<svg class="w-4 h-4" viewBox="0 0 24 24">
+													<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+													<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+													<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+													<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+												</svg>
+												<span>Google</span>
+											</button>
+										{/if}
+
+										{#if $config?.oauth?.providers?.github}
+											<button
+												type="button"
+												on:click={() => window.location.href = `${WEBUI_BASE_URL}/oauth/github/login`}
+												class="flex items-center space-x-2 px-4 py-2 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors text-sm border border-gray-200 dark:border-gray-600"
+											>
+												<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+													<path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.92 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57C20.565 21.795 24 17.31 24 12c0-6.63-5.37-12-12-12z"/>
+												</svg>
+												<span>GitHub</span>
+											</button>
+										{/if}
+
+										{#if $config?.oauth?.providers?.microsoft}
+											<button
+												type="button"
+												on:click={() => window.location.href = `${WEBUI_BASE_URL}/oauth/microsoft/login`}
+												class="flex items-center space-x-2 px-4 py-2 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors text-sm border border-gray-200 dark:border-gray-600"
+											>
+												<svg class="w-4 h-4" viewBox="0 0 24 24">
+													<path fill="#f25022" d="M1 1h10v10H1z"/>
+													<path fill="#00a4ef" d="M13 1h10v10H13z"/>
+													<path fill="#7fba00" d="M1 13h10v10H1z"/>
+													<path fill="#ffb900" d="M13 13h10v10H13z"/>
+												</svg>
+												<span>Microsoft</span>
+											</button>
+										{/if}
+								</div>
+							{/if}
 						</div>
 					</div>
 				{/if}
 			</div>
 		</div>
-		
-		<!-- 版权信息 -->
-		<div class="fixed bottom-4 left-0 right-0 text-center text-xs text-gray-500 dark:text-gray-600">
-			© {new Date().getFullYear()} {$WEBUI_NAME}
+
+		<!-- 底部版权信息 -->
+		<div class="absolute bottom-4 left-0 right-0 text-center text-xs text-gray-500 dark:text-gray-400">
+			© {new Date().getFullYear()} {$WEBUI_NAME} · 简洁 · 安全 · 高效
 		</div>
 	{/if}
 </div>
@@ -618,31 +734,95 @@ debugger;
 	:global(body) {
 		@apply overflow-hidden;
 	}
-	
-	.bg-pattern {
-		background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+
+	/* 背景网格图案 */
+	.bg-grid-pattern {
+		background-image: 
+			linear-gradient(to right, rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+			linear-gradient(to bottom, rgba(148, 163, 184, 0.1) 1px, transparent 1px);
+		background-size: 20px 20px;
 	}
-	
-	input {
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
+	/* 卡片玻璃效果 */
+	.backdrop-blur-xl {
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
 	}
-	
-	.dark input {
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+
+	/* 企业微信登录容器 */
+	#wecom-login-container {
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
-	
-	/* 自定义输入框样式 */
+
+	/* 输入框焦点效果 */
 	input:focus {
-		@apply outline-none;
-		animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 	}
-	
-	@keyframes pulse {
+
+	/* 按钮悬浮效果 - 仅对主要按钮生效 */
+	button[type="submit"]:hover {
+		transform: translateY(-1px);
+	}
+
+	/* 渐变动画 */
+	@keyframes gradient-x {
 		0%, 100% {
-			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.2);
+			background-size: 200% 200%;
+			background-position: left center;
 		}
 		50% {
-			box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+			background-size: 200% 200%;
+			background-position: right center;
+		}
+	}
+
+	/* 脉冲动画优化 */
+	.animate-pulse {
+		animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.7;
+		}
+	}
+
+	/* 卡片阴影效果 */
+	.shadow-xl {
+		box-shadow: 
+			0 20px 25px -5px rgba(0, 0, 0, 0.1),
+			0 10px 10px -5px rgba(0, 0, 0, 0.04);
+	}
+
+	.dark .shadow-xl {
+		box-shadow: 
+			0 20px 25px -5px rgba(0, 0, 0, 0.25),
+			0 10px 10px -5px rgba(0, 0, 0, 0.1);
+	}
+
+	/* 响应式设计 */
+	@media (max-width: 640px) {
+		#wecom-login-container {
+			min-height: 180px;
+		}
+		
+		.backdrop-blur-xl {
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+		}
+	}
+
+	/* 深色模式优化 */
+	@media (prefers-color-scheme: dark) {
+		.bg-grid-pattern {
+			background-image: 
+				linear-gradient(to right, rgba(71, 85, 105, 0.1) 1px, transparent 1px),
+				linear-gradient(to bottom, rgba(71, 85, 105, 0.1) 1px, transparent 1px);
 		}
 	}
 </style>
