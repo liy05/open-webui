@@ -1012,15 +1012,20 @@ async def send_sms_code(request: Request, form_data: SendSmsCodeForm):
     
     # 检查手机号格式（简单验证）
     if not phone_number or not phone_number.isdigit() or len(phone_number) != 11:
-        raise HTTPException(400, detail="Invalid phone number format")
+        raise HTTPException(400, detail="手机号码格式不正确")
+    
+    # 先验证手机号是否在用户库中存在
+    user = Users.get_user_by_phone_number(phone_number)
+    if not user:
+        raise HTTPException(400, detail="该手机号码未注册，请联系管理员")
     
     # 发送短信验证码
     result = send_sms(phone_number)
     
     if not result.get("success", False):
-        raise HTTPException(500, detail=result.get("message", "Failed to send SMS code"))
+        raise HTTPException(500, detail=result.get("message", "验证码发送失败"))
     
-    return {"message": "SMS verification code sent successfully"}
+    return {"message": "验证码发送成功"}
 
 
 ############################
@@ -1035,7 +1040,7 @@ async def phone_signin(request: Request, response: Response, form_data: PhoneLog
     user = Auths.authenticate_user_by_phone_code(form_data.phone_number, form_data.verification_code)
     
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid verification code or phone number")
+        raise HTTPException(status_code=401, detail="验证码错误或已过期")
     
     expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
     expires_at = None

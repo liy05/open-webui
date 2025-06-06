@@ -106,22 +106,39 @@
 			return;
 		}
 
-		await sendSmsCode(phoneNumber).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-
-		// 设置计时器，60秒内不允许重复发送
-		countDown = 60;
-		intervalId = setInterval(() => {
-			countDown--;
-			if (countDown <= 0 && intervalId) {
-				clearInterval(intervalId);
-				intervalId = null;
+debugger;
+		let success = false;
+		
+		try {
+			const result = await sendSmsCode(phoneNumber);
+			console.log('SMS send result:', result);
+			
+			// 验证返回结果
+			if (result && result.message && result.message === "验证码发送成功") {
+				success = true;
+			} else {
+				console.error('Unexpected result:', result);
+				toast.error($i18n.t('验证码发送失败，请稍后重试'));
 			}
-		}, 1000);
+		} catch (error) {
+			console.error('SMS send error:', error);
+			toast.error(`${error}`);
+		}
 
-		toast.success($i18n.t('验证码已发送'));
+		// 只有明确成功时才显示成功消息和启动倒计时
+		if (success) {
+			// 设置计时器，60秒内不允许重复发送
+			countDown = 60;
+			intervalId = setInterval(() => {
+				countDown--;
+				if (countDown <= 0 && intervalId) {
+					clearInterval(intervalId);
+					intervalId = null;
+				}
+			}, 1000);
+
+			toast.success($i18n.t('验证码已发送'));
+		}
 	};
 
 	const submitHandler = async () => {
