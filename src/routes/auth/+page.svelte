@@ -4,6 +4,7 @@
 	import { onMount, getContext, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { dev } from '$app/environment';
 
 	import { getBackendConfig } from '$lib/apis';
 	import {
@@ -24,38 +25,16 @@
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import OnBoarding from '$lib/components/OnBoarding.svelte';
-	
-	// 静态导入企业微信 JS-SDK
-	import * as ww from '@wecom/jssdk';
+
 
 	const i18n = getContext('i18n');
 
 	let loaded = false;
 
 	// 企业微信配置
-	let wecomConfig = {
-		enabled: false,
-		corp_id: '',
-		agent_id: '',
-		redirect_uri: ''
-	};
+	let wecomConfig = null;
 
-	// 企业微信登录组件相关变量
-	let wecomLoginPanel = null;
-	let wecomInitialized = false;
-
-	// 响应模式变化，在切换到企业微信时自动初始化
-	$: if (mode === 'wecom' && !wecomInitialized && wecomConfig.enabled) {
-		setTimeout(() => {
-			const container = document.getElementById('wecom-login-container');
-			if (container) {
-				console.log('响应式初始化企业微信登录组件');
-				initWeComLoginPanel();
-			}
-		}, 100);
-	}
-
-	let mode = $config?.features.enable_ldap ? 'ldap' : 'phone';
+	let mode = 'phone'; // 默认使用手机号登录
 
 	let name = '';
 	let email = '';
@@ -126,69 +105,7 @@
 		await setSessionUser(sessionUser);
 	};
 
-	// 初始化企业微信登录组件
-	const initWeComLoginPanel = async () => {
-		if (!wecomConfig.enabled || !wecomConfig.corp_id || !wecomConfig.agent_id) {
-			console.error('企业微信配置不完整');
-			return;
-		}
 
-		if (wecomInitialized) {
-			console.log('企业微信登录组件已初始化，跳过重复初始化');
-			return;
-		}
-
-		try {
-			// 检查容器是否存在
-			const container = document.getElementById('wecom-login-container');
-			if (!container) {
-				console.error('企业微信登录容器不存在');
-				return;
-			}
-
-			// 清空容器并重置
-			container.innerHTML = '';
-			
-			// 如果之前有登录面板，先销毁
-			if (wecomLoginPanel && wecomLoginPanel.destroy) {
-				try {
-					wecomLoginPanel.destroy();
-				} catch (e) {
-					console.log('销毁旧的登录面板时出错:', e);
-				}
-				wecomLoginPanel = null;
-			}
-
-			// 使用静态导入的 ww 模块
-			wecomLoginPanel = ww.createWWLoginPanel({
-				el: '#wecom-login-container',
-				params: {
-					appid: wecomConfig.corp_id,
-					agentid: wecomConfig.agent_id,
-					redirect_uri: wecomConfig.redirect_uri,
-					state: 'openwebui_auth_' + Math.random().toString(36).substr(2, 9)
-				},
-				onCheckWeComLogin({ isWeComLogin }) {
-					console.log('企业微信环境检测:', isWeComLogin);
-				},
-				onLoginSuccess({ code }) {
-					console.log('企业微信登录成功，获取到code:', code);
-					handleWeComLogin(code);
-				},
-				onLoginFail(error) {
-					console.error('企业微信登录失败:', error);
-					toast.error('企业微信登录失败，请重试');
-				}
-			});
-
-			wecomInitialized = true;
-			console.log('企业微信登录组件初始化成功');
-			
-		} catch (error) {
-			console.error('企业微信 JS-SDK 初始化失败:', error);
-			toast.error('企业微信登录组件加载失败');
-		}
-	};
 
 	// 处理企业微信登录
 	const handleWeComLogin = async (authCode: string) => {
@@ -206,12 +123,7 @@
 	};
 
 	// 企业微信登录处理（保留用于兼容性）
-	const wecomSignInHandler = async () => {
-		// 现在使用JS-SDK组件，不需要额外处理
-		if (!wecomInitialized) {
-			await initWeComLoginPanel();
-		}
-	};
+
 
 	const sendSmsCodeHandler = async () => {
 		if (countDown > 0) return;
@@ -256,9 +168,7 @@
 	};
 
 	const submitHandler = async () => {
-		if (mode === 'wecom') {
-			await wecomSignInHandler();
-		} else if (mode === 'phone') {
+		if (mode === 'phone') {
 			await phoneSignInHandler();
 		} else if (mode === 'ldap') {
 			await ldapSignInHandler();
@@ -298,7 +208,7 @@
 		const code = querystringValue('code');
 		const state = querystringValue('state');
 		
-		if (code && state && (state === 'openwebui_auth' || state.startsWith('openwebui_auth_'))) {
+		if (code && state && state === 'openwebui_auth') {
 			try {
 				// 清理URL参数，避免重复处理
 				const url = new URL(window.location.href);
@@ -332,26 +242,38 @@
 	}
 
 	onMount(async () => {
+		// 检查是否有登录成功的token
+		const urlParams = new URLSearchParams(window.location.search);
+		const token = urlParams.get('token');
+		if (token) {
+			// 如果有token，说明登录成功，跳转到主页
+			console.log('检测到登录成功token，跳转到主页');
+			goto('/', { replaceState: true });
+			return;
+		}
+
 		if ($user !== undefined) {
 			const redirectPath = querystringValue('redirect') || '/';
 			goto(redirectPath);
 		}
 		
-		// 获取企业微信配置
+		// 获取企业微信配置 - 暂时屏蔽
+		/*
 		try {
 			const config = await getWeComConfig();
 			if (config) {
 				wecomConfig = config;
+				console.log('企业微信配置获取成功:', wecomConfig);
 				// 如果企业微信启用且配置完整，设置为默认登录方式
 				if (wecomConfig.enabled && wecomConfig.corp_id && wecomConfig.agent_id) {
 					mode = 'wecom';
-					// 等待DOM更新后初始化企业微信登录组件
-					setTimeout(initWeComLoginPanel, 100);
+					console.log('企业微信配置完整，设置为默认登录方式');
 				}
 			}
 		} catch (error) {
 			console.error('Failed to get WeChat Enterprise config:', error);
 		}
+		*/
 
 		await checkOauthCallback();
 		await checkWeComCallback();
@@ -365,12 +287,18 @@
 			onboarding = $config?.onboarding ?? false;
 		}
 	});
+
+	// 网页授权登录
+	function redirectToWecomAuth() {
+		console.log('重定向到企业微信网页授权登录');
+		window.location.href = '/api/v1/auths/wecom/login';
+	}
+
+
 </script>
 
 <svelte:head>
-	<title>
-		{`${$WEBUI_NAME}`}
-	</title>
+	<title>登录 - Open WebUI</title>
 </svelte:head>
 
 <OnBoarding
@@ -446,14 +374,32 @@
 							<!-- 表单内容 -->
 							<form on:submit={(e) => { e.preventDefault(); submitHandler(); }}>
 								{#if mode === 'wecom'}
-									<!-- 企业微信登录 -->
-									<div class="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
-										<div id="wecom-login-container" class="min-h-[180px] flex items-center justify-center">
-											{#if !wecomInitialized}
-												<div class="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-											{/if}
+								<!-- 企业微信登录 - 暂时屏蔽 -->
+								<!-- 
+								<div class="text-center">
+									<div class="mb-6">
+										<div class="w-16 h-16 bg-gradient-to-r from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+											<svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+												<path d="M19.5,8.5H16.42C16.75,9.25 16.92,10 16.92,10.75C16.92,13.5 14.67,15.75 11.92,15.75H8V19.5H19.5V8.5M11.92,4.25C14.67,4.25 16.92,6.5 16.92,9.25S14.67,14.25 11.92,14.25H4.5V4.25H11.92M11.92,6.75H7V11.75H11.92C13.26,11.75 14.42,10.59 14.42,9.25S13.26,6.75 11.92,6.75Z"/>
+											</svg>
 										</div>
+										<h3 class="text-lg font-medium text-gray-800 dark:text-white mb-4">
+											企业微信登录
+										</h3>
 									</div>
+
+									<button
+										type="button"
+										on:click={redirectToWecomAuth}
+										class="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 ease-in-out transform hover:scale-[1.02] shadow-lg flex items-center justify-center space-x-2"
+									>
+										<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+											<path d="M19.5,8.5H16.42C16.75,9.25 16.92,10 16.92,10.75C16.92,13.5 14.67,15.75 11.92,15.75H8V19.5H19.5V8.5M11.92,4.25C14.67,4.25 16.92,6.5 16.92,9.25S14.67,14.25 11.92,14.25H4.5V4.25H11.92M11.92,6.75H7V11.75H11.92C13.26,11.75 14.42,10.59 14.42,9.25S13.26,6.75 11.92,6.75Z"/>
+										</svg>
+										<span>企业微信登录</span>
+									</button>
+								</div>
+								-->
 								{:else}
 									<!-- 常规登录表单 -->
 									<div class="space-y-4">
@@ -593,32 +539,21 @@
 						<div class="bg-gray-50/50 dark:bg-gray-800/50 px-6 py-4 border-t border-gray-100 dark:border-gray-800">
 							<!-- 登录方式切换按钮 -->
 							<div class="flex flex-wrap gap-2 justify-center">
-									<!-- 企业微信登录 -->
+									<!-- 企业微信登录 - 暂时屏蔽 -->
+									<!--
 									{#if wecomConfig?.enabled}
 										<button
 											type="button"
-											on:click={() => {
-												if (mode === 'wecom') {
-													mode = 'signin';
-												} else {
-													mode = 'wecom';
-													// 重置初始化状态，确保可以重新初始化
-													wecomInitialized = false;
-													// 使用更长的延迟确保DOM更新完成
-													setTimeout(() => {
-														console.log('切换到企业微信登录模式，开始初始化');
-														initWeComLoginPanel();
-													}, 200);
-												}
-											}}
+											on:click={() => mode = mode === 'wecom' ? 'signin' : 'wecom'}
 											class="flex items-center space-x-2 px-3 py-2 rounded-lg transition-all text-sm border {mode === 'wecom' ? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 dark:border-gray-600'}"
 										>
 											<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-												<path d="M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10s10-4.48,10-10S17.52,2,12,2z"/>
+												<path d="M19.5,8.5H16.42C16.75,9.25 16.92,10 16.92,10.75C16.92,13.5 14.67,15.75 11.92,15.75H8V19.5H19.5V8.5M11.92,4.25C14.67,4.25 16.92,6.5 16.92,9.25S14.67,14.25 11.92,14.25H4.5V4.25H11.92M11.92,6.75H7V11.75H11.92C13.26,11.75 14.42,10.59 14.42,9.25S13.26,6.75 11.92,6.75Z"/>
 											</svg>
 											<span>企业微信</span>
 										</button>
 									{/if}
+									-->
 
 									<!-- 手机号登录 - 始终显示 -->
 									<button

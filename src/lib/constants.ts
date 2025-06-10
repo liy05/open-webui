@@ -3,7 +3,7 @@ import { browser, dev } from '$app/environment';
 
 export const APP_NAME = '葛洲坝三峡建设公司AI助手';
 
-export const WEBUI_HOSTNAME = browser ? (dev ? `${location.hostname}:8080` : ``) : '';
+export const WEBUI_HOSTNAME = browser ? (dev ? `${location.hostname}` : ``) : '';
 export const WEBUI_BASE_URL = browser ? (dev ? `http://${WEBUI_HOSTNAME}` : ``) : ``;
 export const WEBUI_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1`;
 

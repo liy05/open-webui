@@ -11,3 +11,9 @@ node_modules
 pnpm-lock.yaml
 package-lock.json
 yarn.lock
+
+# Debug scripts
+debug-websocket.js
+debug-cors.js
+check-wecom-config.js
+test-wecom-fix.js

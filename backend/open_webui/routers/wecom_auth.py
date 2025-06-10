@@ -113,30 +113,26 @@ class WeComAPI:
     
     def get_user_detail(self, userid: str) -> dict:
         """获取用户详细信息"""
-        access_token = self.get_access_token()
-        
-        url = "https://qyapi.weixin.qq.com/cgi-bin/user/get"
-        params = {
-            "access_token": access_token,
-            "userid": userid
-        }
-        
         try:
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
+            access_token = self.get_access_token()
             
-            data = response.json()
-            if data.get("errcode") == 0:
-                return data
-            else:
-                log.error(f"获取用户详细信息失败: {data}")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"获取用户详细信息失败: {data.get('errmsg', '未知错误')}"
-                )
-        except requests.RequestException as e:
-            log.error(f"请求企业微信API失败: {e}")
-            raise HTTPException(status_code=500, detail="网络请求失败")
+            url = f"https://qyapi.weixin.qq.com/cgi-bin/user/get"
+            params = {
+                "access_token": access_token,
+                "userid": userid
+            }
+            
+            response = requests.get(url, params=params)
+            result = response.json()
+            
+            if result.get("errcode") != 0:
+                raise Exception(f"获取用户详细信息失败: {result.get('errmsg', 'Unknown error')}")
+            
+            return result
+            
+        except Exception as e:
+            log.error(f"获取用户详细信息异常: {e}")
+            raise
     
     def get_user_sensitive_info(self, user_ticket: str) -> dict:
         """获取用户敏感信息（包含手机号）"""
@@ -175,7 +171,7 @@ class WeComAPI:
 
 @router.get("/login")
 async def wecom_login(request: Request):
-    """构造企业微信网页授权链接并重定向"""
+    """构造企业微信登录链接并重定向"""
     if not ENABLE_WECOM_AUTH.value:
         raise HTTPException(status_code=400, detail="企业微信认证未启用")
     
@@ -185,21 +181,21 @@ async def wecom_login(request: Request):
             detail="企业微信配置不完整，请联系管理员"
         )
     
-    # 构造授权链接
-    auth_url = "https://open.weixin.qq.com/connect/oauth2/authorize"
+    # 构造企业微信登录链接（使用最新的登录接口）
+    auth_url = "https://login.work.weixin.qq.com/wwlogin/sso/login"
     params = {
-        "appid": WECOM_CORP_ID.value,
-        "redirect_uri": WECOM_REDIRECT_URI.value,
-        "response_type": "code",
-        "scope": "snsapi_privateinfo",  # 使用 snsapi_privateinfo 来获取敏感信息
-        "agentid": WECOM_AGENT_ID.value,
-        "state": "openwebui_auth"
+        "login_type": "CorpApp",  # 企业自建应用登录
+        "appid": WECOM_CORP_ID.value,  # 企业CorpID
+        "agentid": WECOM_AGENT_ID.value,  # 应用AgentID
+        "redirect_uri": WECOM_REDIRECT_URI.value,  # 回调URI
+        "state": "openwebui_auth",  # 状态参数，防CSRF攻击
+        "lang": "zh"  # 中文界面
     }
     
-    # 构造完整的授权URL
-    auth_full_url = f"{auth_url}?{urlencode(params)}#wechat_redirect"
+    # 构造完整的登录URL
+    auth_full_url = f"{auth_url}?{urlencode(params)}"
     
-    log.info(f"重定向到企业微信授权页面: {auth_full_url}")
+    log.info(f"重定向到企业微信登录页面: {auth_full_url}")
     return RedirectResponse(url=auth_full_url)
 
 
@@ -212,7 +208,8 @@ async def wecom_callback(request: Request, response: Response, code: str, state:
     if not code:
         raise HTTPException(status_code=400, detail="授权失败，未获取到授权码")
     
-    if state != "openwebui_auth":
+    # 简化state验证逻辑，使用固定值便于调试
+    if not state or state != "openwebui_auth":
         raise HTTPException(status_code=400, detail="非法的授权请求")
     
     try:
@@ -225,6 +222,12 @@ async def wecom_callback(request: Request, response: Response, code: str, state:
         
         userid = user_info.get("userid")
         user_ticket = user_info.get("user_ticket")  # 获取user_ticket
+        
+        # 调试日志：检查是否获取到user_ticket
+        if user_ticket:
+            log.info(f"成功获取到user_ticket，可以获取敏感信息")
+        else:
+            log.warning(f"未获取到user_ticket，可能是应用权限不足或授权范围不够")
         
         if not userid:
             # 如果是非企业成员，可能需要使用openid
@@ -244,33 +247,95 @@ async def wecom_callback(request: Request, response: Response, code: str, state:
         user_detail = wecom_api.get_user_detail(userid)
         log.info(f"获取到用户详细信息: {user_detail}")
         
-        # 第三步：获取用户敏感信息（手机号）
-        phone_number = None
-        if user_ticket:
-            try:
-                user_sensitive = wecom_api.get_user_sensitive_info(user_ticket)
-                log.info(f"获取到用户敏感信息: {user_sensitive}")
-                phone_number = user_sensitive.get("mobile")
-            except Exception as e:
-                log.warning(f"获取用户敏感信息失败: {e}")
+        # 第三步：尝试通过userid匹配系统用户（主要方法）
+        # 使用企业微信userid作为oauth_sub进行匹配
+        oauth_sub_key = f"wecom:{userid}"  # 使用前缀避免与其他OAuth提供商冲突
+        user = Users.get_user_by_oauth_sub(oauth_sub_key)
         
-        # 如果无法获取敏感信息，尝试从基本信息中获取手机号
-        if not phone_number:
-            phone_number = user_detail.get("mobile")
-        
-        if not phone_number:
-            raise HTTPException(
-                status_code=400,
-                detail="无法获取用户手机号，请确保在企业微信中设置了手机号，或者在应用中启用敏感信息授权"
-            )
-        
-        # 第四步：根据手机号匹配系统用户
-        user = Users.get_user_by_phone_number(phone_number)
-        if not user:
-            raise HTTPException(
-                status_code=400,
-                detail=f"手机号 {phone_number} 未在系统中注册，请联系管理员"
-            )
+        if user:
+            log.info(f"通过oauth_sub找到用户: {user.name} (userid: {userid})")
+        else:
+            # 如果oauth_sub匹配失败，尝试手机号匹配（向后兼容）
+            phone_number = None
+            
+            # 方法1：如果有user_ticket，尝试获取敏感信息
+            if user_ticket:
+                try:
+                    user_sensitive = wecom_api.get_user_sensitive_info(user_ticket)
+                    log.info(f"获取到用户敏感信息: {user_sensitive}")
+                    phone_number = user_sensitive.get("mobile")
+                    if phone_number:
+                        log.info(f"从敏感信息接口获取到手机号: {phone_number[:3]}****{phone_number[-4:]}")
+                except Exception as e:
+                    log.warning(f"获取用户敏感信息失败: {e}")
+            else:
+                log.info("未获取到user_ticket，这是JS-SDK登录组件的正常情况")
+            
+            # 方法2：从用户详细信息中获取手机号（向后兼容）
+            if not phone_number:
+                # 检查所有可能的手机号字段
+                phone_fields = ['mobile', 'telephone', 'phone']
+                for field in phone_fields:
+                    if user_detail.get(field):
+                        phone_number = user_detail.get(field)
+                        log.info(f"从{field}字段获取到手机号: {phone_number[:3]}****{phone_number[-4:]}")
+                        break
+            
+            # 方法3：如果还是没有手机号，检查扩展属性
+            if not phone_number and 'extattr' in user_detail:
+                extattrs = user_detail.get('extattr', {}).get('attrs', [])
+                for attr in extattrs:
+                    if attr.get('name') in ['手机号', 'phone', 'mobile', '电话']:
+                        phone_number = attr.get('value')
+                        if phone_number:
+                            log.info(f"从扩展属性{attr.get('name')}获取到手机号")
+                            break
+            
+            # 尝试通过手机号匹配（向后兼容）
+            if phone_number:
+                user = Users.get_user_by_phone_number(phone_number)
+                if user:
+                    log.info(f"通过手机号找到用户: {user.name}")
+                    # 更新用户的oauth_sub，便于下次快速匹配
+                    try:
+                        Users.update_user_by_id(user.id, {"oauth_sub": oauth_sub_key})
+                        log.info(f"已更新用户oauth_sub: {oauth_sub_key}")
+                    except Exception as e:
+                        log.warning(f"更新oauth_sub失败: {e}")
+            
+            # 详细的调试信息
+            log.info(f"用户匹配结果汇总:")
+            log.info(f"  - userid: {userid}")
+            log.info(f"  - oauth_sub_key: {oauth_sub_key}")
+            log.info(f"  - user_ticket存在: {bool(user_ticket)}")
+            log.info(f"  - mobile字段: {user_detail.get('mobile', '无')}")
+            log.info(f"  - telephone字段: {user_detail.get('telephone', '无')}")
+            log.info(f"  - 最终匹配到用户: {bool(user)}")
+            
+            # 如果仍然没有找到用户，提供详细的错误信息
+            if not user:
+                error_details = []
+                error_details.append(f"企业微信userid: {userid}")
+                error_details.append(f"oauth_sub查询: {oauth_sub_key}")
+                
+                if phone_number:
+                    error_details.append(f"手机号: {phone_number}")
+                    error_details.append("该手机号未在系统中注册")
+                else:
+                    error_details.append("未能获取到手机号")
+                
+                available_fields = [k for k in user_detail.keys() if user_detail[k]]
+                error_details.append(f"可用字段: {', '.join(available_fields)}")
+                
+                error_message = "用户未在系统中注册。详细信息：" + "；".join(error_details)
+                error_message += "。请联系管理员为企业微信用户创建系统账号，或使用oauth_sub字段: " + oauth_sub_key
+                
+                log.error(f"用户匹配失败 - 详细信息: {error_details}")
+                
+                raise HTTPException(
+                    status_code=400,
+                    detail=error_message
+                )
         
         # 第五步：生成token并自动登录
         token = create_token(

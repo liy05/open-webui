@@ -29,9 +29,11 @@ For more information, be sure to check out our [Open WebUI Documentation](https:
 
 - 🛡️ **Granular Permissions and User Groups**: By allowing administrators to create detailed user roles and permissions, we ensure a secure user environment. This granularity not only enhances security but also allows for customized user experiences, fostering a sense of ownership and responsibility amongst users.
 
-- 🏢 **Enterprise WeChat Integration**: Support for Enterprise WeChat (WeCom) OAuth login, allowing seamless authentication through corporate WeChat accounts with automatic user matching based on phone numbers.
+- 📱 **Mobile PWA Support**: Enjoy a native app-like experience on your mobile device with our Progressive Web App (PWA) functionality.
 
-- 📱 **Responsive Design**: Enjoy a seamless experience across Desktop PC, Laptop, and Mobile devices.
+- 🔗 **External Ollama Server Connection**: Seamlessly link to an external Ollama server hosted on a different address by configuring the environment variable during startup. [Learn more](#installing-ollama)
+
+- 🔀 **Multiple Ollama Instance Load Balancing**: Effortlessly distribute loads across multiple Ollama instances for enhanced performance and reliability.
 
 - 📱 **Progressive Web App (PWA) for Mobile**: Enjoy a native app-like experience on your mobile device with our PWA, providing offline access on localhost and a seamless user interface.
 
@@ -63,115 +65,12 @@ For more information, be sure to check out our [Open WebUI Documentation](https:
 
 Want to learn more about Open WebUI's features? Check out our [Open WebUI documentation](https://docs.openwebui.com/features) for a comprehensive overview!
 
-## 企业微信集成功能
+## 🔧 故障排除
 
-### 功能说明
+如果遇到问题，请查看相关故障排除文档：
 
-Open WebUI 现已支持企业微信（WeCom）网页授权登录功能。该功能允许企业用户通过企业微信账号直接登录 Open WebUI，无需单独的用户名和密码。
-
-### 工作原理
-
-1. **网页授权**: 用户在企业微信中打开 Open WebUI 链接时，系统会自动启动企业微信网页授权流程
-2. **身份验证**: 通过企业微信API获取用户身份信息，包括手机号码
-3. **用户匹配**: 系统会根据获取到的手机号码与现有用户进行匹配
-4. **自动登录**: 匹配成功后，用户自动登录到系统
-
-### 手机号码登录流程优化
-
-为了提供更好的用户体验和安全性，手机号码登录现在采用以下流程：
-
-1. **手机号验证**: 用户输入手机号后，系统首先验证该手机号是否在用户库中存在
-2. **预验证**: 如果手机号未注册，将直接提示"该手机号码未注册，请联系管理员"，不会发送验证码
-3. **发送验证码**: 只有注册用户的手机号才会收到验证码短信
-4. **验证登录**: 用户输入正确的验证码后完成登录
-
-这样的设计避免了向未注册用户发送无效的验证码，提高了系统安全性并降低了短信成本。
-
-### 配置方法
-
-#### 环境变量配置
-
-在启动 Open WebUI 前，设置以下环境变量：
-
-```bash
-# 启用企业微信认证
-ENABLE_WECOM_AUTH=true
-
-# 企业微信配置
-WECOM_CORP_ID=your_corp_id          # 企业ID
-WECOM_AGENT_ID=your_agent_id        # 应用的AgentID  
-WECOM_SECRET=your_secret            # 应用的Secret
-WECOM_REDIRECT_URI=your_callback_url # 授权回调URL
-```
-
-#### 管理员配置
-
-管理员也可以通过 Web 界面进行配置：
-
-1. 登录管理员账号
-2. 进入管理设置页面
-3. 找到"企业微信配置"部分
-4. 填写相应的配置信息并保存
-
-### 使用方法
-
-#### 网页访问
-
-用户可以通过以下方式登录：
-
-1. **直接访问登录页面**: `/api/v1/auths/wecom/login`
-2. **授权回调处理**: `/api/v1/auths/wecom/callback`
-3. **API认证接口**: `/api/v1/auths/wecom/auth`
-
-#### 企业微信应用配置
-
-在企业微信管理后台需要配置：
-
-1. **可信域名**: 将 Open WebUI 的域名添加到可信域名列表
-2. **网页授权回调域**: 设置为 `your_domain/api/v1/auths/wecom/callback`
-3. **应用权限**: 确保应用有读取用户信息的权限
-
-### 注意事项
-
-1. **用户预注册**: 用户必须先在 Open WebUI 中注册账号，并确保手机号码与企业微信中的手机号一致
-2. **企业成员**: 只支持企业微信的企业成员登录，外部联系人暂不支持
-3. **手机号要求**: 用户在企业微信中必须设置手机号码，否则无法完成身份匹配
-4. **敏感信息权限**: 企业微信应用需要配置敏感信息访问权限，管理员需要在应用详情中选择"手机号"等敏感字段，用户在OAuth授权时也需要确认授权
-5. **授权模式**: 系统使用 `snsapi_privateinfo` 授权模式，用户首次登录时会看到授权确认页面
-
-### API接口
-
-#### 获取企业微信配置
-```http
-GET /api/v1/auths/wecom/config
-```
-
-#### 企业微信登录
-```http
-GET /api/v1/auths/wecom/login
-```
-
-#### 授权回调
-```http
-GET /api/v1/auths/wecom/callback?code=xxx&state=xxx
-```
-
-#### API认证
-```http
-POST /api/v1/auths/wecom/auth
-Content-Type: application/json
-
-{
-  "code": "authorization_code"
-}
-```
-
-### 故障排除
-
-1. **配置错误**: 检查企业ID、应用ID、Secret等配置是否正确
-2. **回调域名**: 确保回调URL配置正确且可访问
-3. **权限问题**: 确保应用有足够的权限获取用户信息
-4. **手机号匹配**: 确保用户在系统中的手机号与企业微信中一致
+- **代理和CORS配置**: 查看 [`PROXY_CONFIG.md`](./PROXY_CONFIG.md) 和 [`CORS_SOLUTION.md`](./CORS_SOLUTION.md)
+- **远程访问配置**: 查看 [`REMOTE_ACCESS_CONFIG.md`](./REMOTE_ACCESS_CONFIG.md)
 
 ## Sponsors 🙌
 
@@ -289,7 +188,7 @@ Encountering connection issues? Our [Open WebUI Documentation](https://docs.open
 
 #### Open WebUI: Server Connection Error
 
-If you're experiencing connection issues, it’s often due to the WebUI docker container not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the `--network=host` flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link: `http://localhost:8080`.
+If you're experiencing connection issues, it's often due to the WebUI docker container not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container. Use the `--network=host` flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link: `http://localhost:8080`.
 
 **Example Docker Command**:
 
