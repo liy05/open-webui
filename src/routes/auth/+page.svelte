@@ -55,7 +55,7 @@
 		}, 100);
 	}
 
-	let mode = $config?.features.enable_ldap ? 'ldap' : 'phone';
+	let mode = 'phone'; // 默认使用手机号登录
 
 	let name = '';
 	let email = '';
@@ -342,12 +342,12 @@
 			const config = await getWeComConfig();
 			if (config) {
 				wecomConfig = config;
-				// 如果企业微信启用且配置完整，设置为默认登录方式
-				if (wecomConfig.enabled && wecomConfig.corp_id && wecomConfig.agent_id) {
-					mode = 'wecom';
-					// 等待DOM更新后初始化企业微信登录组件
-					setTimeout(initWeComLoginPanel, 100);
-				}
+				// 暂时屏蔽PC端扫码登录，默认使用手机号登录
+				// if (wecomConfig.enabled && wecomConfig.corp_id && wecomConfig.agent_id) {
+				// 	mode = 'wecom';
+				// 	// 等待DOM更新后初始化企业微信登录组件
+				// 	setTimeout(initWeComLoginPanel, 100);
+				// }
 			}
 		} catch (error) {
 			console.error('Failed to get WeChat Enterprise config:', error);
@@ -593,8 +593,8 @@
 						<div class="bg-gray-50/50 dark:bg-gray-800/50 px-6 py-4 border-t border-gray-100 dark:border-gray-800">
 							<!-- 登录方式切换按钮 -->
 							<div class="flex flex-wrap gap-2 justify-center">
-									<!-- 企业微信登录 -->
-									{#if wecomConfig?.enabled}
+									<!-- 企业微信登录 - 暂时屏蔽PC端扫码登录 -->
+									{#if false && wecomConfig?.enabled}
 										<button
 											type="button"
 											on:click={() => {
