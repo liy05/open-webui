@@ -492,29 +492,31 @@
 
 						<div class=" flex justify-between mb-2.5 mt-1.5 mx-0.5">
 							<div class="ml-1 self-end flex space-x-1">
-								<InputMenu
-									{screenCaptureHandler}
-									uploadFilesHandler={() => {
-										filesInputElement.click();
-									}}
-								>
-									<button
-										class="bg-transparent hover:bg-white/80 text-gray-800 dark:text-white dark:hover:bg-gray-800 transition rounded-full p-1.5 outline-hidden focus:outline-hidden"
-										type="button"
-										aria-label="More"
+								{#if !$mobile}
+									<InputMenu
+										{screenCaptureHandler}
+										uploadFilesHandler={() => {
+											filesInputElement.click();
+										}}
 									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											viewBox="0 0 20 20"
-											fill="currentColor"
-											class="size-5"
+										<button
+											class="bg-transparent hover:bg-white/80 text-gray-800 dark:text-white dark:hover:bg-gray-800 transition rounded-full p-1.5 outline-hidden focus:outline-hidden"
+											type="button"
+											aria-label="More"
 										>
-											<path
-												d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z"
-											/>
-										</svg>
-									</button>
-								</InputMenu>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												viewBox="0 0 20 20"
+												fill="currentColor"
+												class="size-5"
+											>
+												<path
+													d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z"
+												/>
+											</svg>
+										</button>
+									</InputMenu>
+								{/if}
 							</div>
 
 							<div class="self-end flex space-x-1 mr-1">
